@@ -231,9 +231,18 @@ fn start_watchdog(app_handle: tauri::AppHandle, app_state: Arc<Mutex<AppState>>)
     });
 }
 
+fn cmd_exists(name: &str) -> bool {
+    std::process::Command::new("which")
+        .arg(name)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 /// Auto-setup on first launch:
-/// 1. Inject terminal-mirror.zsh into ~/.zshrc
-/// 2. Add Claude Code hooks to ~/.claude/settings.json
+/// 1. Detect zsh + Claude Code
+/// 2. Inject terminal-mirror.zsh into ~/.zshrc (requires zsh)
+/// 3. Add Claude Code hooks to ~/.claude/settings.json (requires claude)
 fn auto_setup(resource_dir: PathBuf, app_handle: tauri::AppHandle) {
     std::thread::spawn(move || {
         let home = dirs::home_dir().unwrap();
@@ -241,7 +250,10 @@ fn auto_setup(resource_dir: PathBuf, app_handle: tauri::AppHandle) {
         let zshrc = home.join(".zshrc");
         let settings_path = home.join(".claude/settings.json");
 
-        // Check if already initialized
+        let has_zsh = cmd_exists("zsh");
+        let has_claude = cmd_exists("claude");
+
+        // Check if already initialized for each component
         let zshrc_done = {
             let content = std::fs::read_to_string(&zshrc).unwrap_or_default();
             content.contains("terminal-mirror.zsh")
@@ -251,109 +263,122 @@ fn auto_setup(resource_dir: PathBuf, app_handle: tauri::AppHandle) {
             content.contains("127.0.0.1:1234")
         };
 
-        if zshrc_done && claude_done {
-            eprintln!("[setup] already initialized, skipping");
+        // Determine what needs setup
+        let need_zsh_setup = has_zsh && !zshrc_done;
+        let need_claude_setup = has_claude && !claude_done;
+
+        // If nothing to do, skip
+        if !need_zsh_setup && !need_claude_setup {
+            if !has_zsh {
+                eprintln!("[ani-mime] zsh not found. Install zsh to use terminal tracking.");
+            }
+            if !has_claude {
+                eprintln!("[ani-mime] Claude Code not found (optional). Install it for Claude activity tracking.");
+            }
+            if zshrc_done || claude_done {
+                eprintln!("[setup] already initialized, skipping");
+            }
             return;
         }
 
         let _ = app_handle.emit("status-changed", "initializing");
 
-        // --- 1. Setup ~/.zshrc ---
-        if zsh_script.exists() {
-            let content = std::fs::read_to_string(&zshrc).unwrap_or_default();
-            if !content.contains("terminal-mirror.zsh") {
-                let line = format!(
-                    "\n# --- Ani-Mime Terminal Hook ---\nsource \"{}\"\n",
-                    zsh_script.display()
-                );
-                let _ = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(&zshrc)
-                    .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
-                eprintln!("[setup] injected terminal-mirror.zsh into ~/.zshrc");
-            }
+        // --- 1. Setup ~/.zshrc (only if zsh is installed) ---
+        if need_zsh_setup && zsh_script.exists() {
+            let line = format!(
+                "\n# --- Ani-Mime Terminal Hook ---\nsource \"{}\"\n",
+                zsh_script.display()
+            );
+            let _ = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&zshrc)
+                .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
+            eprintln!("[setup] injected terminal-mirror.zsh into ~/.zshrc");
+        } else if !has_zsh {
+            eprintln!("[ani-mime] zsh not found. Install zsh to use terminal tracking.");
+            eprintln!("[ani-mime] Ani-Mime requires zsh for core functionality.");
         }
 
-        // --- 2. Setup Claude Code hooks in ~/.claude/settings.json ---
-        let claude_dir = dirs::home_dir().unwrap().join(".claude");
-        let settings_path = claude_dir.join("settings.json");
+        // --- 2. Setup Claude Code hooks (only if claude is installed) ---
+        if need_claude_setup {
+            let claude_dir = home.join(".claude");
+            let settings_path = claude_dir.join("settings.json");
 
-        // Read existing settings or start fresh
-        let mut settings: serde_json::Value = if settings_path.exists() {
-            let content = std::fs::read_to_string(&settings_path).unwrap_or_default();
-            serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
-        } else {
-            let _ = std::fs::create_dir_all(&claude_dir);
-            serde_json::json!({})
-        };
+            let mut settings: serde_json::Value = if settings_path.exists() {
+                let content = std::fs::read_to_string(&settings_path).unwrap_or_default();
+                serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
+            } else {
+                let _ = std::fs::create_dir_all(&claude_dir);
+                serde_json::json!({})
+            };
 
-        let hooks = settings
-            .as_object_mut()
-            .unwrap()
-            .entry("hooks")
-            .or_insert(serde_json::json!({}));
+            let hooks = settings
+                .as_object_mut()
+                .unwrap()
+                .entry("hooks")
+                .or_insert(serde_json::json!({}));
 
-        let busy_cmd = "curl -s --max-time 1 'http://127.0.0.1:1234/status?pid=0&state=busy&type=task' > /dev/null 2>&1";
-        let idle_cmd = "curl -s --max-time 1 'http://127.0.0.1:1234/status?pid=0&state=idle' > /dev/null 2>&1";
+            let busy_cmd = "curl -s --max-time 1 'http://127.0.0.1:1234/status?pid=0&state=busy&type=task' > /dev/null 2>&1";
+            let idle_cmd = "curl -s --max-time 1 'http://127.0.0.1:1234/status?pid=0&state=idle' > /dev/null 2>&1";
+            let ani_marker = "127.0.0.1:1234";
 
-        let ani_marker = "127.0.0.1:1234";
-
-        // Helper: check if hook array already has our command
-        let has_ani_hook = |arr: &serde_json::Value| -> bool {
-            arr.as_array().map_or(false, |entries| {
-                entries.iter().any(|entry| {
-                    entry["hooks"].as_array().map_or(false, |hks| {
-                        hks.iter().any(|h| {
-                            h["command"]
-                                .as_str()
-                                .map_or(false, |c| c.contains(ani_marker))
+            let has_ani_hook = |arr: &serde_json::Value| -> bool {
+                arr.as_array().map_or(false, |entries| {
+                    entries.iter().any(|entry| {
+                        entry["hooks"].as_array().map_or(false, |hks| {
+                            hks.iter().any(|h| {
+                                h["command"]
+                                    .as_str()
+                                    .map_or(false, |c| c.contains(ani_marker))
+                            })
                         })
                     })
                 })
-            })
-        };
+            };
 
-        let add_hook = |hooks_obj: &mut serde_json::Value, event: &str, cmd: &str| {
-            let arr = hooks_obj
-                .as_object_mut()
-                .unwrap()
-                .entry(event)
-                .or_insert(serde_json::json!([]));
+            let add_hook = |hooks_obj: &mut serde_json::Value, event: &str, cmd: &str| {
+                let arr = hooks_obj
+                    .as_object_mut()
+                    .unwrap()
+                    .entry(event)
+                    .or_insert(serde_json::json!([]));
 
-            if !has_ani_hook(arr) {
-                if let Some(entries) = arr.as_array_mut() {
-                    if entries.is_empty() {
-                        entries.push(serde_json::json!({
-                            "matcher": "",
-                            "hooks": [{ "type": "command", "command": cmd }]
-                        }));
-                    } else {
-                        // Append to existing first entry's hooks array
-                        if let Some(first) = entries.first_mut() {
-                            if let Some(hks) = first["hooks"].as_array_mut() {
-                                hks.push(serde_json::json!({
-                                    "type": "command",
-                                    "command": cmd
-                                }));
+                if !has_ani_hook(arr) {
+                    if let Some(entries) = arr.as_array_mut() {
+                        if entries.is_empty() {
+                            entries.push(serde_json::json!({
+                                "matcher": "",
+                                "hooks": [{ "type": "command", "command": cmd }]
+                            }));
+                        } else {
+                            if let Some(first) = entries.first_mut() {
+                                if let Some(hks) = first["hooks"].as_array_mut() {
+                                    hks.push(serde_json::json!({
+                                        "type": "command",
+                                        "command": cmd
+                                    }));
+                                }
                             }
                         }
                     }
                 }
-            }
-        };
+            };
 
-        add_hook(hooks, "PreToolUse", busy_cmd);
-        add_hook(hooks, "UserPromptSubmit", busy_cmd);
-        add_hook(hooks, "Stop", idle_cmd);
-        add_hook(hooks, "SessionStart", idle_cmd);
-        add_hook(hooks, "SessionEnd", idle_cmd);
+            add_hook(hooks, "PreToolUse", busy_cmd);
+            add_hook(hooks, "UserPromptSubmit", busy_cmd);
+            add_hook(hooks, "Stop", idle_cmd);
+            add_hook(hooks, "SessionStart", idle_cmd);
+            add_hook(hooks, "SessionEnd", idle_cmd);
 
-        let _ = std::fs::write(
-            &settings_path,
-            serde_json::to_string_pretty(&settings).unwrap(),
-        );
-        eprintln!("[setup] configured Claude Code hooks in ~/.claude/settings.json");
+            let _ = std::fs::write(
+                &settings_path,
+                serde_json::to_string_pretty(&settings).unwrap(),
+            );
+            eprintln!("[setup] configured Claude Code hooks in ~/.claude/settings.json");
+        } else if !has_claude {
+            eprintln!("[ani-mime] Claude Code not found (optional). Install it for Claude activity tracking.");
+        }
 
         let _ = app_handle.emit("status-changed", "searching");
     });
