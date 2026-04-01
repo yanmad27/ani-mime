@@ -239,6 +239,41 @@ fn cmd_exists(name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Show a native macOS dialog. Returns true if user clicked OK/Yes.
+fn macos_dialog(title: &str, message: &str, buttons: &[&str]) -> String {
+    let buttons_str = buttons
+        .iter()
+        .map(|b| format!("\"{}\"", b))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let script = format!(
+        r#"display dialog "{}" with title "{}" buttons {{{}}} default button 1"#,
+        message.replace('"', "\\\""),
+        title.replace('"', "\\\""),
+        buttons_str
+    );
+
+    let output = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(&script)
+        .output();
+
+    match output {
+        Ok(o) => {
+            let result = String::from_utf8_lossy(&o.stdout).to_string();
+            // osascript returns "button returned:OK" format
+            result
+                .split("button returned:")
+                .nth(1)
+                .unwrap_or("")
+                .trim()
+                .to_string()
+        }
+        Err(_) => String::new(),
+    }
+}
+
 /// Auto-setup on first launch:
 /// 1. Detect zsh + Claude Code
 /// 2. Inject terminal-mirror.zsh into ~/.zshrc (requires zsh)
@@ -263,45 +298,72 @@ fn auto_setup(resource_dir: PathBuf, app_handle: tauri::AppHandle) {
             content.contains("127.0.0.1:1234")
         };
 
-        // Determine what needs setup
-        let need_zsh_setup = has_zsh && !zshrc_done;
-        let need_claude_setup = has_claude && !claude_done;
-
-        // If nothing to do, skip
-        if !need_zsh_setup && !need_claude_setup {
-            if !has_zsh {
-                eprintln!("[ani-mime] zsh not found. Install zsh to use terminal tracking.");
-            }
-            if !has_claude {
-                eprintln!("[ani-mime] Claude Code not found (optional). Install it for Claude activity tracking.");
-            }
-            if zshrc_done || claude_done {
-                eprintln!("[setup] already initialized, skipping");
-            }
+        // Already fully initialized — skip silently
+        if zshrc_done && claude_done {
+            eprintln!("[setup] already initialized, skipping");
+            return;
+        }
+        // zsh done but claude not installed — nothing more to do
+        if zshrc_done && !has_claude {
             return;
         }
 
         let _ = app_handle.emit("status-changed", "initializing");
 
-        // --- 1. Setup ~/.zshrc (only if zsh is installed) ---
-        if need_zsh_setup && zsh_script.exists() {
-            let line = format!(
-                "\n# --- Ani-Mime Terminal Hook ---\nsource \"{}\"\n",
-                zsh_script.display()
-            );
-            let _ = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&zshrc)
-                .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
-            eprintln!("[setup] injected terminal-mirror.zsh into ~/.zshrc");
-        } else if !has_zsh {
-            eprintln!("[ani-mime] zsh not found. Install zsh to use terminal tracking.");
-            eprintln!("[ani-mime] Ani-Mime requires zsh for core functionality.");
+        // --- 1. Setup ~/.zshrc ---
+        if !zshrc_done {
+            if !has_zsh {
+                // zsh not installed — warn user
+                macos_dialog(
+                    "Ani-Mime",
+                    "zsh is not installed on this machine.\n\nAni-Mime requires zsh for terminal tracking.\nPlease install zsh and restart the app.",
+                    &["OK"],
+                );
+            } else if zsh_script.exists() {
+                // zsh found, ask to install hook
+                let answer = macos_dialog(
+                    "Ani-Mime Setup",
+                    "Ani-Mime needs to add a hook to your ~/.zshrc to track terminal activity.\n\nAllow setup?",
+                    &["Yes", "No"],
+                );
+                if answer == "Yes" {
+                    let line = format!(
+                        "\n# --- Ani-Mime Terminal Hook ---\nsource \"{}\"\n",
+                        zsh_script.display()
+                    );
+                    let _ = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&zshrc)
+                        .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
+                    eprintln!("[setup] injected terminal-mirror.zsh into ~/.zshrc");
+                } else {
+                    eprintln!("[setup] user skipped zsh hook setup");
+                }
+            }
         }
 
-        // --- 2. Setup Claude Code hooks (only if claude is installed) ---
-        if need_claude_setup {
+        // --- 2. Setup Claude Code hooks ---
+        if !claude_done {
+            let answer = if has_claude {
+                macos_dialog(
+                    "Ani-Mime Setup",
+                    "Claude Code detected! Ani-Mime can track when Claude is working.\n\nThis adds hooks to ~/.claude/settings.json.\n\nAllow setup?",
+                    &["Yes", "Skip"],
+                )
+            } else {
+                macos_dialog(
+                    "Ani-Mime",
+                    "Claude Code is not installed.\n\nThis is optional — Ani-Mime works without it.\nIf you install Claude Code later, restart Ani-Mime to set up tracking.\n\nWould you like to pre-configure the hooks now?",
+                    &["Yes", "Skip"],
+                )
+            };
+            if answer != "Yes" {
+                eprintln!("[setup] user skipped Claude Code hooks setup");
+                let _ = app_handle.emit("status-changed", "searching");
+                return;
+            }
+
             let claude_dir = home.join(".claude");
             let settings_path = claude_dir.join("settings.json");
 
