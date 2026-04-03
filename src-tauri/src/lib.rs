@@ -320,6 +320,14 @@ struct ShellInfo {
 fn auto_setup(resource_dir: PathBuf, app_handle: tauri::AppHandle) {
     std::thread::spawn(move || {
         let home = dirs::home_dir().unwrap();
+        let setup_marker = home.join(".ani-mime/setup-done");
+
+        // Already ran setup once — skip entirely
+        if setup_marker.exists() {
+            eprintln!("[setup] already initialized (marker found), skipping");
+            return;
+        }
+
         let settings_path = home.join(".claude/settings.json");
 
         // --- Detect installed shells and which need setup ---
@@ -480,6 +488,11 @@ fn auto_setup(resource_dir: PathBuf, app_handle: tauri::AppHandle) {
                 eprintln!("[setup] user skipped Claude Code hooks setup");
             }
         }
+
+        // Mark setup as done — won't show dialogs again
+        let _ = std::fs::create_dir_all(home.join(".ani-mime"));
+        let _ = std::fs::write(&setup_marker, "done");
+        eprintln!("[setup] setup complete, marker written");
 
         let _ = app_handle.emit("status-changed", "searching");
     });
