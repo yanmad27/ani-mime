@@ -5,19 +5,19 @@
   gap: 8px;
   padding: 8px 16px;
   border-radius: 9999px;
-  background: rgba(30, 30, 30, 0.8);
+  background: var(--bg-pill);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-pill);
   pointer-events: none;
   transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
   white-space: nowrap;
 }
 
 .container:hover .pill {
-  background: rgba(40, 40, 40, 0.85);
-  border-color: rgba(255, 255, 255, 0.15);
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.05);
+  background: var(--bg-pill-hover);
+  border-color: var(--border-pill-hover);
+  box-shadow: var(--shadow-pill-hover);
 }
 
 /* --- Dot --- */
@@ -72,7 +72,7 @@
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   font-size: 13px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--text-primary);
   line-height: 1;
   pointer-events: none;
 }

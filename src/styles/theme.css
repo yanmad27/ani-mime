@@ -1,0 +1,20 @@
+/* Dark theme (default) */
+:root,
+[data-theme="dark"] {
+  --bg-pill: rgba(30, 30, 30, 0.8);
+  --bg-pill-hover: rgba(40, 40, 40, 0.85);
+  --border-pill: rgba(255, 255, 255, 0.08);
+  --border-pill-hover: rgba(255, 255, 255, 0.15);
+  --shadow-pill-hover: 0 0 12px rgba(255, 255, 255, 0.05);
+  --text-primary: rgba(255, 255, 255, 0.85);
+}
+
+/* Light theme */
+[data-theme="light"] {
+  --bg-pill: rgba(255, 255, 255, 0.8);
+  --bg-pill-hover: rgba(255, 255, 255, 0.9);
+  --border-pill: rgba(0, 0, 0, 0.1);
+  --border-pill-hover: rgba(0, 0, 0, 0.2);
+  --shadow-pill-hover: 0 0 12px rgba(0, 0, 0, 0.08);
+  --text-primary: rgba(0, 0, 0, 0.85);
+}

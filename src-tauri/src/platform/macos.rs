@@ -20,6 +20,11 @@ pub fn setup_macos_window(app: &tauri::App) {
             unsafe {
                 ns_win.setOpaque_(NO);
                 ns_win.setBackgroundColor_(NSColor::clearColor(nil));
+
+                // Opt out of macOS Sequoia window tiling/snapping:
+                // canJoinAllSpaces (1<<0) | fullScreenNone (1<<9) | stationary (1<<4)
+                let behavior: u64 = (1 << 0) | (1 << 9) | (1 << 4);
+                let _: () = msg_send![ns_win, setCollectionBehavior: behavior];
             }
         }
 
@@ -32,5 +37,6 @@ pub fn setup_macos_window(app: &tauri::App) {
                 let _: () = msg_send![wk, setValue: no forKey: key];
             }
         });
+
     }
 }

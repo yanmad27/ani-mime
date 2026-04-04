@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { Status } from "../types/status";
-import { spriteMap, autoStopStatuses } from "../constants/sprites";
+import { getSpriteMap, autoStopStatuses } from "../constants/sprites";
+import { usePet } from "../hooks/usePet";
 import "../styles/mascot.css";
 
 interface MascotProps {
@@ -8,6 +9,7 @@ interface MascotProps {
 }
 
 export function Mascot({ status }: MascotProps) {
+  const { pet } = usePet();
   const [frozen, setFrozen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -22,6 +24,7 @@ export function Mascot({ status }: MascotProps) {
     return () => clearTimeout(timerRef.current);
   }, [status]);
 
+  const spriteMap = getSpriteMap(pet);
   const sprite = spriteMap[status] ?? spriteMap.searching;
   const spriteUrl = new URL(
     `../assets/sprites/${sprite.file}`,
