@@ -14,14 +14,26 @@
     "windows": [
       {
         "title": "Ani-Mime",
-        "width": 250,
-        "height": 185,
+        "width": 140,
+        "height": 175,
         "resizable": false,
         "fullscreen": false,
         "alwaysOnTop": true,
         "transparent": true,
         "decorations": false,
         "skipTaskbar": true
+      },
+      {
+        "label": "settings",
+        "title": "Settings",
+        "url": "settings.html",
+        "width": 620,
+        "height": 440,
+        "resizable": false,
+        "visible": false,
+        "decorations": true,
+        "transparent": false,
+        "center": true
       }
     ],
     "security": {
