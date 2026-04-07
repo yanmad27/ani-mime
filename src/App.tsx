@@ -7,6 +7,11 @@ import { useDrag } from "./hooks/useDrag";
 import { useTheme } from "./hooks/useTheme";
 import { useBubble } from "./hooks/useBubble";
 import { useVisitors } from "./hooks/useVisitors";
+import { usePeers } from "./hooks/usePeers";
+import { useNickname } from "./hooks/useNickname";
+import { usePet } from "./hooks/usePet";
+import { invoke } from "@tauri-apps/api/core";
+import { Menu, MenuItem } from "@tauri-apps/api/menu";
 import "./styles/theme.css";
 import "./styles/app.css";
 
@@ -15,12 +20,56 @@ function App() {
   const { dragging, onMouseDown } = useDrag();
   const { visible, message, dismiss } = useBubble();
   const visitors = useVisitors();
+  const peers = usePeers();
+  const { nickname } = useNickname();
+  const { pet } = usePet();
   useTheme();
+
+  const onContextMenu = async (e: React.MouseEvent) => {
+    e.preventDefault();
+
+    if (status === "visiting") return;
+
+    const items: MenuItem[] = [];
+
+    if (peers.length === 0) {
+      const item = await MenuItem.new({
+        id: "no-peers",
+        text: "No peers nearby",
+        enabled: false,
+      });
+      items.push(item);
+    } else {
+      for (const peer of peers) {
+        const peerId = peer.instance_name;
+        const item = await MenuItem.new({
+          id: peerId,
+          text: `Visit ${peer.nickname} (${peer.pet})`,
+          action: async () => {
+            try {
+              await invoke("start_visit", {
+                peerId,
+                nickname,
+                pet,
+              });
+            } catch (err) {
+              console.error("Visit failed:", err);
+            }
+          },
+        });
+        items.push(item);
+      }
+    }
+
+    const menu = await Menu.new({ items });
+    await menu.popup();
+  };
 
   return (
     <div
       className={`container ${dragging ? "dragging" : ""}`}
       onMouseDown={onMouseDown}
+      onContextMenu={onContextMenu}
     >
       <SpeechBubble visible={visible} message={message} onDismiss={dismiss} />
       {status !== "visiting" && <Mascot status={status} />}
