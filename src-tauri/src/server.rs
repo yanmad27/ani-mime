@@ -17,7 +17,7 @@ pub fn start_http_server(app_handle: tauri::AppHandle, app_state: Arc<Mutex<AppS
 
         let cors: tiny_http::Header = "Access-Control-Allow-Origin: *".parse().unwrap();
 
-        for req in server.incoming_requests() {
+        for mut req in server.incoming_requests() {
             let url = req.url().to_string();
             let now = now_secs();
 
@@ -76,6 +76,68 @@ pub fn start_http_server(app_handle: tauri::AppHandle, app_state: Arc<Mutex<AppS
                         emit_if_changed(&app_handle, &mut st);
                     }
                 }
+            }
+
+            // --- Visit routes ---
+            if url.starts_with("/visit") && !url.starts_with("/visit-end") {
+                // Another dog is visiting us
+                let mut body = String::new();
+                let reader = req.as_reader();
+                let _ = reader.read_to_string(&mut body);
+
+                if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&body) {
+                    let pet = payload["pet"].as_str().unwrap_or("rottweiler").to_string();
+                    let nickname = payload["nickname"].as_str().unwrap_or("Unknown").to_string();
+                    let duration_secs = payload["duration_secs"].as_u64().unwrap_or(15);
+
+                    let mut st = app_state.lock().unwrap();
+                    st.visitors.push(crate::state::VisitingDog {
+                        pet: pet.clone(),
+                        nickname: nickname.clone(),
+                        arrived_at: now,
+                        duration_secs,
+                    });
+                    drop(st);
+
+                    let _ = app_handle.emit("visitor-arrived", serde_json::json!({
+                        "pet": pet,
+                        "nickname": nickname,
+                        "duration_secs": duration_secs,
+                    }));
+                    eprintln!("[visit] {} ({}) arrived for {}s", nickname, pet, duration_secs);
+                }
+
+                let resp = tiny_http::Response::from_string("ok")
+                    .with_status_code(200)
+                    .with_header(cors.clone());
+                let _ = req.respond(resp);
+                continue;
+            }
+
+            if url.starts_with("/visit-end") {
+                // A visiting dog is leaving
+                let mut body = String::new();
+                let reader = req.as_reader();
+                let _ = reader.read_to_string(&mut body);
+
+                if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&body) {
+                    let nickname = payload["nickname"].as_str().unwrap_or("").to_string();
+
+                    let mut st = app_state.lock().unwrap();
+                    st.visitors.retain(|v| v.nickname != nickname);
+                    drop(st);
+
+                    let _ = app_handle.emit("visitor-left", serde_json::json!({
+                        "nickname": nickname,
+                    }));
+                    eprintln!("[visit] {} left", nickname);
+                }
+
+                let resp = tiny_http::Response::from_string("ok")
+                    .with_status_code(200)
+                    .with_header(cors.clone());
+                let _ = req.respond(resp);
+                continue;
             }
 
             // Debug endpoint: GET /debug → show all sessions

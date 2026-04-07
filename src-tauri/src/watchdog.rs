@@ -39,6 +39,24 @@ pub fn start_watchdog(app_handle: tauri::AppHandle, app_state: Arc<Mutex<AppStat
             }
         });
 
+        // Remove expired visitors
+        let expired_visitors: Vec<String> = st.visitors
+            .iter()
+            .filter(|v| now - v.arrived_at >= v.duration_secs)
+            .map(|v| v.nickname.clone())
+            .collect();
+
+        for nickname in &expired_visitors {
+            eprintln!("[watchdog] visitor {} expired", nickname);
+            let _ = app_handle.emit("visitor-left", serde_json::json!({
+                "nickname": nickname,
+            }));
+        }
+
+        if !expired_visitors.is_empty() {
+            st.visitors.retain(|v| now - v.arrived_at < v.duration_secs);
+        }
+
         // Update UI
         if st.sessions.is_empty() && st.current_ui != "searching" && st.current_ui != "initializing" {
             if st.current_ui != "disconnected" {
