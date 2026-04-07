@@ -26,6 +26,10 @@ A tiny always-on-top pixel dog that reacts to what your terminal is doing. It sn
 
 It also integrates with **Claude Code** — the dog knows when Claude is thinking vs waiting for you.
 
+<p align="center">
+  <img src="docs/design.png" width="800" alt="Ani-Mime Mascot States" />
+</p>
+
 ## Mascot States
 
 | Status | Dot | Mascot | Meaning |
