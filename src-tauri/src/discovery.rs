@@ -19,10 +19,16 @@ pub fn start_discovery(
         let mdns = ServiceDaemon::new().expect("Failed to create mDNS daemon");
 
         // Register our service
-        let host_name = hostname::get()
+        let raw_host = hostname::get()
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
+        // mdns-sd requires hostname ending with ".local."
+        let host_name = if raw_host.ends_with(".local") || raw_host.ends_with(".local.") {
+            if raw_host.ends_with('.') { raw_host } else { format!("{}.", raw_host) }
+        } else {
+            format!("{}.local.", raw_host.trim_end_matches('.'))
+        };
         let instance_name = format!("{}-{}", nickname, std::process::id());
 
         let properties = [
@@ -33,7 +39,7 @@ pub fn start_discovery(
         let service_info = ServiceInfo::new(
             SERVICE_TYPE,
             &instance_name,
-            &format!("{}.", host_name),
+            &host_name,
             "",
             port,
             &properties[..],
