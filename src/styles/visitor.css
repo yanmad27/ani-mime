@@ -1,0 +1,39 @@
+.visitor-dog {
+  position: absolute;
+  bottom: 36px;
+  right: calc(-110px - var(--visitor-offset));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateX(200px);
+  transition: transform 0.5s ease-out;
+}
+
+.visitor-dog.entered {
+  transform: translateX(0);
+}
+
+.visitor-name {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-pill);
+  padding: 2px 8px;
+  border-radius: 8px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+.visitor-sprite {
+  image-rendering: pixelated;
+  background-repeat: no-repeat;
+  background-size: var(--sprite-width) 96px;
+  animation: visitor-play var(--sprite-duration) steps(var(--sprite-steps), end) infinite;
+  transform: scaleX(-1);
+}
+
+@keyframes visitor-play {
+  from { background-position: 0 0; }
+  to { background-position: calc(-1 * var(--sprite-width)) 0; }
+}
