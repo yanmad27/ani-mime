@@ -2,6 +2,7 @@
 #[macro_use]
 extern crate objc;
 
+mod discovery;
 mod helpers;
 mod platform;
 mod server;
@@ -73,7 +74,16 @@ pub fn run() {
             }));
 
             server::start_http_server(app.handle().clone(), app_state.clone());
-            watchdog::start_watchdog(app.handle().clone(), app_state);
+            watchdog::start_watchdog(app.handle().clone(), app_state.clone());
+
+            // Start mDNS peer discovery
+            // TODO: Task 11 will load nickname/pet from store. For now use defaults.
+            discovery::start_discovery(
+                app.handle().clone(),
+                app_state.clone(),
+                "Anonymous".to_string(),
+                "rottweiler".to_string(),
+            );
 
             Ok(())
         })
