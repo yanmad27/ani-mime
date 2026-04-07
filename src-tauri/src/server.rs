@@ -1,19 +1,21 @@
 use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 
-use crate::helpers::{get_query_param, now_secs};
+use crate::helpers::{get_port, get_query_param, now_secs};
 use crate::state::{emit_if_changed, AppState, Session, TaskCompleted};
 
 pub fn start_http_server(app_handle: tauri::AppHandle, app_state: Arc<Mutex<AppState>>) {
     std::thread::spawn(move || {
-        let server = match tiny_http::Server::http("127.0.0.1:1234") {
+        let port = get_port();
+        let addr = format!("127.0.0.1:{}", port);
+        let server = match tiny_http::Server::http(&addr) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("[http] failed to bind :1234: {e}");
+                eprintln!("[http] failed to bind :{port}: {e}");
                 return;
             }
         };
-        eprintln!("[http] listening on 127.0.0.1:1234");
+        eprintln!("[http] listening on {}", addr);
 
         let cors: tiny_http::Header = "Access-Control-Allow-Origin: *".parse().unwrap();
 

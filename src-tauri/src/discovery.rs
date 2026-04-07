@@ -2,10 +2,10 @@ use std::sync::{Arc, Mutex};
 use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 use tauri::Emitter;
 
+use crate::helpers::get_port;
 use crate::state::{AppState, PeerInfo};
 
 const SERVICE_TYPE: &str = "_ani-mime._tcp.local.";
-const VISIT_PORT: u16 = 1234;
 
 /// Register this instance on the network and browse for peers.
 pub fn start_discovery(
@@ -15,6 +15,7 @@ pub fn start_discovery(
     pet: String,
 ) {
     std::thread::spawn(move || {
+        let port = get_port();
         let mdns = ServiceDaemon::new().expect("Failed to create mDNS daemon");
 
         // Register our service
@@ -34,7 +35,7 @@ pub fn start_discovery(
             &instance_name,
             &format!("{}.", host_name),
             "",
-            VISIT_PORT,
+            port,
             &properties[..],
         ).expect("Failed to create ServiceInfo");
 
