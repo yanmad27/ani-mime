@@ -15,10 +15,10 @@ const messages = [
 ];
 
 const welcomeMessages = [
-  "Hey there! Ready to work",
-  "Hi! Let's get started",
-  "Hello! I'm here for you",
-  "Woof! Nice to see you",
+  "Hey! Ready to work",
+  "Let's get started!",
+  "Hello there!",
+  "Woof! Hi!",
 ];
 
 function randomMessage(): string {
