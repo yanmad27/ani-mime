@@ -5,6 +5,7 @@
   padding: 8px 14px;
   margin-bottom: -46px;
   z-index: 1;
+  align-self: center;
   border-radius: 12px;
   background: var(--bg-bubble);
   backdrop-filter: blur(10px);
