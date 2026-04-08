@@ -1,26 +1,27 @@
 .dev-tag {
   display: inline-block;
   align-self: center;
-  padding: 2px 8px;
+  padding: 3px 10px;
   font-family: "SF Mono", "Menlo", "Monaco", monospace;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 1px;
-  color: #5e5ce6;
-  background: rgba(94, 92, 230, 0.12);
-  border: 1px solid rgba(94, 92, 230, 0.25);
+  letter-spacing: 1.2px;
+  color: #fff;
+  background: #5e5ce6;
+  border: none;
   border-radius: 4px;
   cursor: pointer;
   pointer-events: auto;
-  transition: background 0.15s, border-color 0.15s;
   line-height: 1;
+  box-shadow: 0 0 8px rgba(94, 92, 230, 0.5);
+  transition: background 0.15s, box-shadow 0.15s;
 }
 
 .dev-tag:hover {
-  background: rgba(94, 92, 230, 0.22);
-  border-color: rgba(94, 92, 230, 0.45);
+  background: #7a78f0;
+  box-shadow: 0 0 14px rgba(94, 92, 230, 0.7);
 }
 
 .dev-tag:active {
-  background: rgba(94, 92, 230, 0.3);
+  background: #4b49c9;
 }

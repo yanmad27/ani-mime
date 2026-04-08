@@ -18,7 +18,7 @@ import "./styles/theme.css";
 import "./styles/app.css";
 
 function App() {
-  const status = useStatus();
+  const { status, scenario } = useStatus();
   const { dragging, onMouseDown } = useDrag();
   const { visible, message, dismiss } = useBubble();
   const visitors = useVisitors();
@@ -70,15 +70,16 @@ function App() {
 
   return (
     <div
-      className={`container ${dragging ? "dragging" : ""}`}
+      className={`container ${dragging ? "dragging" : ""} ${scenario ? "scenario-active" : ""}`}
       onMouseDown={onMouseDown}
       onContextMenu={onContextMenu}
     >
+      {scenario && <div className="scenario-badge">SCENARIO</div>}
       <SpeechBubble visible={visible} message={message} onDismiss={dismiss} />
       {status !== "visiting" && <Mascot status={status} />}
       {status === "visiting" && <div style={{ width: 128, height: 128 }} />}
       <StatusPill status={status} glow={visible} />
-      {devMode && <DevTag />}
+      {devMode && !scenario && <DevTag />}
       {visitors.map((v, i) => (
         <VisitorDog key={v.nickname} pet={v.pet} nickname={v.nickname} index={i} />
       ))}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTheme } from "../hooks/useTheme";
+import { ScenarioViewer } from "./scenarios";
 import "../styles/theme.css";
 import "../styles/superpower.css";
 
@@ -11,7 +12,7 @@ interface LogEntry {
 }
 
 type LogFilter = "all" | "info" | "warn" | "error";
-type MenuItem = "logs";
+type MenuItem = "logs" | "scenarios";
 
 function formatTime(timestamp: number): string {
   const date = new Date(timestamp * 1000);
@@ -174,9 +175,17 @@ export function SuperpowerTool() {
           <span className="menu-icon">&#9776;</span>
           Logs
         </button>
+        <button
+          className={`superpower-menu-item ${activeMenu === "scenarios" ? "active" : ""}`}
+          onClick={() => setActiveMenu("scenarios")}
+        >
+          <span className="menu-icon">&#9655;</span>
+          Scenarios
+        </button>
       </nav>
       <main className="superpower-content">
         {activeMenu === "logs" && <LogViewer />}
+        {activeMenu === "scenarios" && <ScenarioViewer />}
       </main>
     </div>
   );

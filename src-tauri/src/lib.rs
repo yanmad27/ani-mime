@@ -31,6 +31,20 @@ fn clear_logs() {
 }
 
 #[tauri::command]
+fn scenario_override(status: Option<String>, app: tauri::AppHandle) {
+    match &status {
+        Some(s) => {
+            crate::app_log!("[scenario] override -> {}", s);
+            let _ = app.emit("scenario-override", serde_json::json!({ "status": s }));
+        }
+        None => {
+            crate::app_log!("[scenario] override cleared");
+            let _ = app.emit("scenario-override", serde_json::Value::Null);
+        }
+    }
+}
+
+#[tauri::command]
 fn open_superpower(app: tauri::AppHandle) -> Result<(), String> {
     crate::app_log!("[app] opening superpower tool");
     if let Some(win) = app.get_webview_window("superpower") {
@@ -154,7 +168,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![start_visit, get_logs, clear_logs, open_superpower])
+        .invoke_handler(tauri::generate_handler![start_visit, get_logs, clear_logs, open_superpower, scenario_override])
         .setup(|app| {
             crate::app_log!("[app] starting Ani-Mime v{}", env!("CARGO_PKG_VERSION"));
 
