@@ -1,0 +1,26 @@
+.dev-tag {
+  display: inline-block;
+  align-self: center;
+  padding: 2px 8px;
+  font-family: "SF Mono", "Menlo", "Monaco", monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #5e5ce6;
+  background: rgba(94, 92, 230, 0.12);
+  border: 1px solid rgba(94, 92, 230, 0.25);
+  border-radius: 4px;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 0.15s, border-color 0.15s;
+  line-height: 1;
+}
+
+.dev-tag:hover {
+  background: rgba(94, 92, 230, 0.22);
+  border-color: rgba(94, 92, 230, 0.45);
+}
+
+.dev-tag:active {
+  background: rgba(94, 92, 230, 0.3);
+}

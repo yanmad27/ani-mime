@@ -2,6 +2,7 @@ import { Mascot } from "./components/Mascot";
 import { StatusPill } from "./components/StatusPill";
 import { SpeechBubble } from "./components/SpeechBubble";
 import { VisitorDog } from "./components/VisitorDog";
+import { DevTag } from "./components/DevTag";
 import { useStatus } from "./hooks/useStatus";
 import { useDrag } from "./hooks/useDrag";
 import { useTheme } from "./hooks/useTheme";
@@ -10,6 +11,7 @@ import { useVisitors } from "./hooks/useVisitors";
 import { usePeers } from "./hooks/usePeers";
 import { useNickname } from "./hooks/useNickname";
 import { usePet } from "./hooks/usePet";
+import { useDevMode } from "./hooks/useDevMode";
 import { invoke } from "@tauri-apps/api/core";
 import { Menu, MenuItem } from "@tauri-apps/api/menu";
 import "./styles/theme.css";
@@ -23,6 +25,7 @@ function App() {
   const peers = usePeers();
   const { nickname } = useNickname();
   const { pet } = usePet();
+  const devMode = useDevMode();
   useTheme();
 
   const onContextMenu = async (e: React.MouseEvent) => {
@@ -75,6 +78,7 @@ function App() {
       {status !== "visiting" && <Mascot status={status} />}
       {status === "visiting" && <div style={{ width: 128, height: 128 }} />}
       <StatusPill status={status} glow={visible} />
+      {devMode && <DevTag />}
       {visitors.map((v, i) => (
         <VisitorDog key={v.nickname} pet={v.pet} nickname={v.nickname} index={i} />
       ))}
