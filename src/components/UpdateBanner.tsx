@@ -3,11 +3,10 @@ import "../styles/update-banner.css";
 
 interface UpdateBannerProps {
   latest: string;
-  current: string;
   onDismiss: () => void;
 }
 
-export function UpdateBanner({ latest, current, onDismiss }: UpdateBannerProps) {
+export function UpdateBanner({ latest, onDismiss }: UpdateBannerProps) {
   const handleUpdate = async () => {
     await invoke("update_now");
     onDismiss();

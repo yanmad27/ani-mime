@@ -83,7 +83,6 @@ function App() {
       {showUpdate && (
         <UpdateBanner
           latest={update.latest}
-          current={update.current}
           onDismiss={dismissUpdate}
         />
       )}
