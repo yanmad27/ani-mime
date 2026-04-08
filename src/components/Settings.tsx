@@ -4,6 +4,7 @@ import { emit } from "@tauri-apps/api/event";
 import { useTheme, type Theme } from "../hooks/useTheme";
 import { usePet } from "../hooks/usePet";
 import { useBubble } from "../hooks/useBubble";
+import { useGlow } from "../hooks/useGlow";
 import { useNickname } from "../hooks/useNickname";
 import { pets } from "../constants/sprites";
 import "../styles/settings.css";
@@ -14,6 +15,7 @@ export function Settings() {
   const { theme, setTheme } = useTheme();
   const { pet, setPet } = usePet();
   const { enabled: bubbleEnabled, setEnabled: setBubbleEnabled } = useBubble();
+  const { enabled: glowEnabled, setEnabled: setGlowEnabled } = useGlow();
   const { nickname, setNickname } = useNickname();
   const [tab, setTab] = useState<Tab>("general");
   const [devMode, setDevMode] = useState(false);
@@ -84,6 +86,15 @@ export function Settings() {
           <div className="settings-section">
             <div className="settings-section-title">Appearance</div>
             <div className="settings-card">
+              <div className="settings-row">
+                <span className="settings-row-label">Glow Effect</span>
+                <button
+                  className={`toggle-switch ${glowEnabled ? "active" : ""}`}
+                  onClick={() => setGlowEnabled(!glowEnabled)}
+                >
+                  <span className="toggle-knob" />
+                </button>
+              </div>
               <div className="settings-row">
                 <span className="settings-row-label">Theme</span>
                 <div className="theme-toggle">

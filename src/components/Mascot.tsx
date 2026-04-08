@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import type { Status } from "../types/status";
 import { getSpriteMap, autoStopStatuses } from "../constants/sprites";
 import { usePet } from "../hooks/usePet";
+import { useGlow } from "../hooks/useGlow";
 import "../styles/mascot.css";
 
 interface MascotProps {
@@ -10,6 +11,7 @@ interface MascotProps {
 
 export function Mascot({ status }: MascotProps) {
   const { pet } = usePet();
+  const { enabled: glowEnabled } = useGlow();
   const [frozen, setFrozen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -35,7 +37,7 @@ export function Mascot({ status }: MascotProps) {
 
   return (
     <div
-      className={`sprite ${frozen ? "frozen" : ""}`}
+      className={`sprite ${frozen ? "frozen" : ""} ${glowEnabled ? "glow" : ""}`}
       style={{
         backgroundImage: `url(${spriteUrl})`,
         width: 128,

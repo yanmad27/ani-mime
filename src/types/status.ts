@@ -12,7 +12,7 @@ export interface SpriteConfig {
   frames: number;
 }
 
-export type Pet = "rottweiler" | "dalmatian";
+export type Pet = "rottweiler" | "dalmatian" | "samurai" | "hancock";
 
 export interface PetInfo {
   id: Pet;

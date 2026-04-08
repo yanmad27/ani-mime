@@ -29,6 +29,34 @@ export const pets: PetInfo[] = [
       visiting: { file: "DalmatianSitting.png", frames: 8 },
     },
   },
+  {
+    id: "samurai",
+    name: "Samurai",
+    preview: "SamuraiSitting.png",
+    sprites: {
+      disconnected: { file: "SamuraiSleep.png", frames: 3 },
+      busy: { file: "SamuraiBark.png", frames: 6 },
+      service: { file: "SamuraiSniff.png", frames: 8 },
+      idle: { file: "SamuraiSitting.png", frames: 6 },
+      searching: { file: "SamuraiIdle.png", frames: 8 },
+      initializing: { file: "SamuraiIdle.png", frames: 8 },
+      visiting: { file: "SamuraiSitting.png", frames: 6 },
+    },
+  },
+  {
+    id: "hancock",
+    name: "Hancock",
+    preview: "HancockSitting.png",
+    sprites: {
+      disconnected: { file: "HancockSitting.png", frames: 1 },
+      busy: { file: "HancockBark.png", frames: 9 },
+      service: { file: "HancockSniff.png", frames: 18 },
+      idle: { file: "HancockSitting.png", frames: 10 },
+      searching: { file: "HancockIdle.png", frames: 17 },
+      initializing: { file: "HancockIdle.png", frames: 17 },
+      visiting: { file: "HancockSitting.png", frames: 10 },
+    },
+  },
 ];
 
 export function getSpriteMap(petId: Pet): Record<Status, SpriteConfig> {
