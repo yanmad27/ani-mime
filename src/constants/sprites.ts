@@ -48,7 +48,7 @@ export const pets: PetInfo[] = [
     name: "Hancock",
     preview: "HancockSitting.png",
     sprites: {
-      disconnected: { file: "HancockSitting.png", frames: 1 },
+      disconnected: { file: "HancockSleep.png", frames: 1 },
       busy: { file: "HancockBark.png", frames: 9 },
       service: { file: "HancockSniff.png", frames: 18 },
       idle: { file: "HancockSitting.png", frames: 10 },
