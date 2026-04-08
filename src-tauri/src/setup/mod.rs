@@ -1,5 +1,5 @@
 mod claude;
-mod shell;
+pub(crate) mod shell;
 
 use std::path::PathBuf;
 use tauri::Emitter;
