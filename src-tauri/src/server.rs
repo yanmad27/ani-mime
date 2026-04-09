@@ -40,6 +40,11 @@ pub fn start_http_server(app_handle: tauri::AppHandle, app_state: Arc<Mutex<AppS
                                 .entry(pid)
                                 .or_insert_with(|| Session::new_idle(now));
                             session.last_seen = now;
+                            if let Some(t) = get_query_param(&url, "title") {
+                                session.title = urlencoding::decode(t)
+                                    .unwrap_or(std::borrow::Cow::Borrowed(t))
+                                    .into_owned();
+                            }
 
                             if is_new {
                                 crate::app_log!("[http] new session registered: pid={}", pid);
@@ -133,6 +138,11 @@ pub fn start_http_server(app_handle: tauri::AppHandle, app_state: Arc<Mutex<AppS
                                 .entry(pid)
                                 .or_insert_with(|| Session::new_idle(now));
                             session.last_seen = now;
+                            if let Some(t) = get_query_param(&url, "title") {
+                                session.title = urlencoding::decode(t)
+                                    .unwrap_or(std::borrow::Cow::Borrowed(t))
+                                    .into_owned();
+                            }
 
                             if is_new {
                                 crate::app_log!("[http] heartbeat registered new session: pid={}", pid);

@@ -25,7 +25,7 @@ end
 # --- Heartbeat (background, every 20s) ---
 function _tm_heartbeat
     while true
-        curl -s --max-time 2 "$_TM_URL/heartbeat?pid=$fish_pid" >/dev/null 2>&1
+        curl -s --max-time 2 "$_TM_URL/heartbeat?pid=$fish_pid&title="(basename $PWD) >/dev/null 2>&1
         sleep 20
     end
 end
@@ -45,11 +45,11 @@ function _tm_preexec --on-event fish_preexec
     _tm_is_claude "$cmd"; and return
 
     set -l cmd_type (_tm_classify "$cmd")
-    curl -s --max-time 1 "$_TM_URL/status?pid=$fish_pid&state=busy&type=$cmd_type" >/dev/null 2>&1 &
+    curl -s --max-time 1 "$_TM_URL/status?pid=$fish_pid&state=busy&type=$cmd_type&title="(basename $PWD) >/dev/null 2>&1 &
     disown
 end
 
 function _tm_postexec --on-event fish_postexec
-    curl -s --max-time 1 "$_TM_URL/status?pid=$fish_pid&state=idle" >/dev/null 2>&1 &
+    curl -s --max-time 1 "$_TM_URL/status?pid=$fish_pid&state=idle&title="(basename $PWD) >/dev/null 2>&1 &
     disown
 end

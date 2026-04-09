@@ -41,6 +41,8 @@ pub struct Session {
     pub service_since: u64,
     /// When this session entered "busy" state (0 = not busy).
     pub busy_since: u64,
+    /// Human-readable session title (directory name, TTY, etc).
+    pub title: String,
 }
 
 impl Session {
@@ -51,8 +53,17 @@ impl Session {
             last_seen: now,
             service_since: 0,
             busy_since: 0,
+            title: String::new(),
         }
     }
+}
+
+/// Serializable session info returned to the frontend.
+#[derive(Clone, Serialize)]
+pub struct SessionInfo {
+    pub pid: u32,
+    pub title: String,
+    pub ui_state: String,
 }
 
 pub struct AppState {

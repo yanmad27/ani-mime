@@ -27,7 +27,7 @@ _tm_classify() {
 # --- Heartbeat (background, every 20s) ---
 _tm_heartbeat() {
   while true; do
-    curl -s --max-time 2 "${_TM_URL}/heartbeat?pid=$$" > /dev/null 2>&1
+    curl -s --max-time 2 "${_TM_URL}/heartbeat?pid=$$&title=${PWD##*/}" > /dev/null 2>&1
     sleep 20
   done
 }
@@ -57,13 +57,13 @@ _tm_preexec() {
   _tm_is_claude "$cmd" && return
 
   local cmd_type=$(_tm_classify "$cmd")
-  _tm_bg curl -s --max-time 1 "${_TM_URL}/status?pid=$$&state=busy&type=${cmd_type}" > /dev/null 2>&1
+  _tm_bg curl -s --max-time 1 "${_TM_URL}/status?pid=$$&state=busy&type=${cmd_type}&title=${PWD##*/}" > /dev/null 2>&1
 }
 trap '_tm_preexec' DEBUG
 
 # --- Precmd via PROMPT_COMMAND ---
 _tm_precmd() {
   _TM_CMD_RUNNING=0
-  _tm_bg curl -s --max-time 1 "${_TM_URL}/status?pid=$$&state=idle" > /dev/null 2>&1
+  _tm_bg curl -s --max-time 1 "${_TM_URL}/status?pid=$$&state=idle&title=${PWD##*/}" > /dev/null 2>&1
 }
 PROMPT_COMMAND="_tm_precmd${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
