@@ -6,6 +6,7 @@ import { usePet } from "../hooks/usePet";
 import { useBubble } from "../hooks/useBubble";
 import { useGlow, type GlowMode } from "../hooks/useGlow";
 import { useNickname } from "../hooks/useNickname";
+import { useAutoStart } from "../hooks/useAutoStart";
 import { mimeCategories, getMimesByCategory } from "../constants/sprites";
 import "../styles/settings.css";
 
@@ -23,6 +24,7 @@ export function Settings() {
   const { enabled: bubbleEnabled, setEnabled: setBubbleEnabled } = useBubble();
   const { mode: glowMode, setMode: setGlowMode } = useGlow();
   const { nickname, setNickname } = useNickname();
+  const { enabled: autoStartEnabled, setEnabled: setAutoStartEnabled } = useAutoStart();
   const [tab, setTab] = useState<Tab>("general");
   const [draftNickname, setDraftNickname] = useState(nickname);
   const nicknameChanged = draftNickname !== nickname;
@@ -112,6 +114,15 @@ export function Settings() {
           <div className="settings-section">
             <div className="settings-section-title">Behavior</div>
             <div className="settings-card">
+              <div className="settings-row">
+                <span className="settings-row-label">Start at Login</span>
+                <button
+                  className={`toggle-switch ${autoStartEnabled ? "active" : ""}`}
+                  onClick={() => setAutoStartEnabled(!autoStartEnabled)}
+                >
+                  <span className="toggle-knob" />
+                </button>
+              </div>
               <div className="settings-row">
                 <span className="settings-row-label">Speech Bubbles</span>
                 <button
