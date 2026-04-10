@@ -60,6 +60,19 @@ Shell hooks (curl) → HTTP :1234 → Rust state → Tauri event → React UI
 | Status colors and dot animations | [docs/theming.md](docs/theming.md) → "Status Colors" |
 | Window sizes and config | [docs/constants-reference.md](docs/constants-reference.md) → "Window Configuration" |
 
+## Architecture (C3)
+
+The `.c3/` directory contains C3 architecture documentation — system context, container breakdowns, and component details with diagrams and dependency maps.
+
+**When to use C3 docs**: Cross-container changes, understanding system boundaries, onboarding context, or design decisions that span multiple subsystems. For implementation-level work within a single area, prefer the `docs/` guides above.
+
+| Level | Document | Use for |
+|-------|----------|---------|
+| Context | [.c3/README.md](.c3/README.md) | System overview, actors, constraints, container map |
+| Container | [.c3/c3-1-rust-backend/](.c3/c3-1-rust-backend/) | Backend boundary, component inventory |
+| Container | [.c3/c3-2-react-frontend/](.c3/c3-2-react-frontend/) | Frontend boundary, component inventory |
+| Container | [.c3/c3-3-shell-integration/](.c3/c3-3-shell-integration/) | Shell hooks boundary, component inventory |
+
 ## Critical Rules
 
 - **Port 1234** is hardcoded across shell scripts, Claude hooks, and Rust server (override via `ANI_MIME_PORT` env var)
