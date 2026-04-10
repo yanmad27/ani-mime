@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -62,10 +62,11 @@ pub fn read_log_file(last_n: usize) -> Vec<LogEntry> {
 
 pub fn clear_log_file() {
     let Some(path) = get_log_path() else { return };
+    // Note: tauri-plugin-log holds its own file handle with a cached current_size.
+    // After truncation, its size tracker will be stale, which may cause an early
+    // rotation on the next write. Acceptable for a dev-only tool.
     if let Ok(file) = std::fs::OpenOptions::new().write(true).open(&path) {
         let _ = file.set_len(0);
-        let mut f = file;
-        let _ = f.seek(SeekFrom::Start(0));
     }
 }
 
