@@ -246,9 +246,11 @@ test('upload Charlotte as custom sprite via manual flow', async ({ page }) => {
   const creator = page.locator('.custom-creator');
   await expect(creator).toBeVisible();
 
-  // Save should be disabled initially (no name, no files selected)
   const saveBtn = creator.locator('.creator-btn.save');
-  await expect(saveBtn).toBeDisabled();
+
+  // Clicking Save without a name shows validation error
+  await saveBtn.click();
+  await expect(page.locator('.save-error')).toHaveText('Name is required');
 
   // Enter "Charlotte" as the mime name
   await creator.locator('.settings-input').fill('Charlotte');
