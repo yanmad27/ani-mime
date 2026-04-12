@@ -6,8 +6,11 @@
 - **Peer discovery broken in release builds** — added macOS entitlements (`Entitlements.plist`) for network access; Tauri's ad-hoc signing doesn't embed entitlements, so a post-build re-sign step is now required
 - **Visitor collision when peers share a nickname** — visitors are now keyed by `instance_name` (unique per process) instead of `nickname`
 - **Silent discovery failure** — mDNS daemon, registration, and browse errors now emit a `discovery-error` event to the frontend instead of failing silently
+- **Log viewer overflow** — last rows in Superpower log viewer were clipped by container overflow
 
 ### Added
+- **Menu Bar Tray Icon** — always-visible system tray icon; left-click toggles mascot window, right-click shows menu (Show, Settings, Quit)
+- **Hide from Dock** — toggle in Settings to remove app from Dock and Cmd+Tab switcher via `ActivationPolicy`, persisted across restarts
 - `src-tauri/Entitlements.plist` — macOS Hardened Runtime entitlements for network client/server, JIT, and library validation
 - `bundle.macOS` config in `tauri.conf.json` — explicit entitlements and Info.plist references
 - `src-tauri/script/post-build-sign.sh` — re-signs the .app with entitlements and re-creates the DMG after `tauri build`
