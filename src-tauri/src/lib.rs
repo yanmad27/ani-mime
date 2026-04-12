@@ -269,9 +269,26 @@ fn start_visit(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::default()
+                .level(log::LevelFilter::Debug)
+                .level_for("tauri", log::LevelFilter::Info)
+                .level_for("tao", log::LevelFilter::Info)
+                .level_for("mdns_sd", log::LevelFilter::Warn)
+                .targets([
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: None }),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
+                ])
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(3))
+                .max_file_size(1_000_000)
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![start_visit, get_logs, clear_logs, open_superpower, scenario_override, preview_dialog])
         .setup(|app| {
             crate::app_log!("[app] starting Ani-Mime v{}", env!("CARGO_PKG_VERSION"));

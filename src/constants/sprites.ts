@@ -66,13 +66,27 @@ export const pets: PetInfo[] = [
 export const mimeCategories: { key: MimeCategory; label: string }[] = [
   { key: "pet", label: "Pet" },
   { key: "character", label: "Character" },
+  { key: "custom", label: "Custom" },
 ];
 
 export function getMimesByCategory(category: MimeCategory): PetInfo[] {
   return pets.filter((p) => p.category === category);
 }
 
+const customSpriteOverrides: Record<string, Record<Status, SpriteConfig>> = {};
+
+export function registerCustomSprites(petId: string, sprites: Record<Status, SpriteConfig>) {
+  customSpriteOverrides[petId] = sprites;
+}
+
+export function unregisterCustomSprites(petId: string) {
+  delete customSpriteOverrides[petId];
+}
+
 export function getSpriteMap(petId: Pet): Record<Status, SpriteConfig> {
+  if (customSpriteOverrides[petId]) {
+    return customSpriteOverrides[petId];
+  }
   const pet = pets.find((p) => p.id === petId);
   return pet ? pet.sprites : pets[0].sprites;
 }

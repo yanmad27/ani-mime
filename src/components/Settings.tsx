@@ -9,7 +9,52 @@ import { useNickname } from "../hooks/useNickname";
 import { useAutoStart } from "../hooks/useAutoStart";
 import { useAutoUpdate } from "../hooks/useAutoUpdate";
 import { mimeCategories, getMimesByCategory } from "../constants/sprites";
+import { useScale } from "../hooks/useScale";
+import { useCustomMimes, ALL_STATUSES } from "../hooks/useCustomMimes";
+import { SmartImport } from "./SmartImport";
+import { AnimationPreview } from "./AnimationPreview";
+import type { Status } from "../types/status";
+import { readFile } from "@tauri-apps/plugin-fs";
+import { appDataDir, join, resourceDir } from "@tauri-apps/api/path";
+import { openPath } from "@tauri-apps/plugin-opener";
+import { error as logError } from "@tauri-apps/plugin-log";
 import "../styles/settings.css";
+
+const STATUS_DESCRIPTIONS: Record<Status, string> = {
+  idle: "No commands running — the default resting state",
+  busy: "A terminal command is actively running",
+  service: "A long-running process (e.g. dev server) is active",
+  disconnected: "No terminal sessions connected",
+  searching: "App just launched, looking for terminal sessions",
+  initializing: "First-launch setup in progress",
+  visiting: "A friend's mime is visiting from the local network",
+};
+
+/** Parse a frame spec like "5", "1-5", or "41-55,57,58" into a total frame count. Returns 0 for invalid input. */
+function parseFrameSpec(spec: string): number {
+  const trimmed = spec.trim();
+  if (!trimmed) return 0;
+  if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+
+  let count = 0;
+  for (const part of trimmed.split(",")) {
+    const p = part.trim();
+    const range = p.match(/^(\d+)-(\d+)$/);
+    if (range) {
+      const start = parseInt(range[1], 10);
+      const end = parseInt(range[2], 10);
+      if (end < start) return 0;
+      count += end - start + 1;
+    } else if (/^\d+$/.test(p)) {
+      count += 1;
+    } else {
+      return 0;
+    }
+  }
+  return count;
+}
+
+export { parseFrameSpec };
 
 type Tab = "general" | "mime" | "about";
 
@@ -27,13 +72,59 @@ export function Settings() {
   const { nickname, setNickname } = useNickname();
   const { enabled: autoStartEnabled, setEnabled: setAutoStartEnabled } = useAutoStart();
   const { enabled: autoUpdateEnabled, setEnabled: setAutoUpdateEnabled } = useAutoUpdate();
+  const { scale, setScale, SCALE_PRESETS } = useScale();
+  const { mimes: customMimes, pickSpriteFile, addMime, addMimeFromBlobs, updateMime, deleteMime } = useCustomMimes();
   const [tab, setTab] = useState<Tab>("general");
+  const [creating, setCreating] = useState<false | "manual" | "smart">(false);
+  const [editingMime, setEditingMime] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [newName, setNewName] = useState("");
+  const [spriteInputs, setSpriteInputs] = useState<
+    Record<Status, { path: string; frames: string }>
+  >(() => {
+    const init: any = {};
+    for (const s of ALL_STATUSES) init[s] = { path: "", frames: "1" };
+    return init;
+  });
+  const [customPreviews, setCustomPreviews] = useState<Record<string, string>>({});
+  const [manualAnimPreview, setManualAnimPreview] = useState<{ url: string; frames: number; label: string } | null>(null);
   const [draftNickname, setDraftNickname] = useState(nickname);
   const nicknameChanged = draftNickname !== nickname;
 
   useEffect(() => {
     setDraftNickname(nickname);
   }, [nickname]);
+  useEffect(() => {
+    let cancelled = false;
+    const urls: string[] = [];
+    const loadPreviews = async () => {
+      const base = await appDataDir();
+      const previews: Record<string, string> = {};
+      for (const mime of customMimes) {
+        const idleSprite = mime.sprites.idle;
+        if (idleSprite) {
+          try {
+            const filePath = await join(base, "custom-sprites", idleSprite.fileName);
+            const bytes = await readFile(filePath);
+            if (cancelled) return;
+            const blob = new Blob([bytes], { type: "image/png" });
+            const url = URL.createObjectURL(blob);
+            urls.push(url);
+            previews[mime.id] = url;
+          } catch (err) {
+            logError(`[settings] failed to load preview for ${mime.id}: ${err instanceof Error ? err.message : err}`);
+          }
+        }
+      }
+      if (!cancelled) setCustomPreviews(previews);
+    };
+    loadPreviews();
+    return () => {
+      cancelled = true;
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [customMimes]);
+
   const [devMode, setDevMode] = useState(false);
   const clickCountRef = useRef(0);
   const clickTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -61,6 +152,137 @@ export function Settings() {
         clickCountRef.current = 0;
       }, 3000);
     }
+  };
+
+  const handlePickFile = async (status: Status) => {
+    const path = await pickSpriteFile();
+    if (!path) return;
+
+    // Auto-detect frame count from image dimensions (width / height for square-frame strips)
+    let detectedFrames = "1";
+    try {
+      const bytes = await readFile(path);
+      const blob = new Blob([bytes], { type: "image/png" });
+      const url = URL.createObjectURL(blob);
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = reject;
+        el.src = url;
+      });
+      URL.revokeObjectURL(url);
+      if (img.height > 0 && img.width >= img.height) {
+        detectedFrames = String(Math.round(img.width / img.height));
+      }
+    } catch {
+      // If detection fails, keep default "1"
+    }
+
+    setSpriteInputs((prev) => ({
+      ...prev,
+      [status]: { path, frames: detectedFrames },
+    }));
+  };
+
+  const handleFrameChange = (status: Status, value: string) => {
+    setSpriteInputs((prev) => ({ ...prev, [status]: { ...prev[status], frames: value } }));
+  };
+
+  const handleManualPreview = async (status: Status) => {
+    const filePath = spriteInputs[status].path;
+    if (!filePath) return;
+    try {
+      const frameCount = parseFrameSpec(spriteInputs[status].frames);
+      if (frameCount <= 0) return;
+      const bytes = await readFile(filePath);
+      if (manualAnimPreview?.url) URL.revokeObjectURL(manualAnimPreview.url);
+      const url = URL.createObjectURL(new Blob([bytes], { type: "image/png" }));
+      setManualAnimPreview({ url, frames: frameCount, label: status });
+    } catch (err) {
+      logError(`[settings] failed to preview ${status}: ${err instanceof Error ? err.message : err}`);
+    }
+  };
+
+  const handleSaveCustom = async () => {
+    if (!newName.trim()) { setSaveError("Name is required"); return; }
+    const missingSprite = ALL_STATUSES.find((s) => !spriteInputs[s].path);
+    if (missingSprite) { setSaveError(`Sprite for "${missingSprite}" is required`); return; }
+    const badFrames = ALL_STATUSES.find((s) => parseFrameSpec(spriteInputs[s].frames) <= 0);
+    if (badFrames) { setSaveError(`Invalid frame count for "${badFrames}"`); return; }
+
+    setSaveError(null);
+    const spriteFiles: Record<Status, { sourcePath: string; frames: number }> = {} as any;
+    for (const s of ALL_STATUSES) {
+      spriteFiles[s] = { sourcePath: spriteInputs[s].path, frames: parseFrameSpec(spriteInputs[s].frames) };
+    }
+
+    const id = await addMime(newName.trim(), spriteFiles);
+    setPet(id);
+    setCreating(false);
+    setNewName("");
+    clearManualPreviews();
+    const init: any = {};
+    for (const s of ALL_STATUSES) init[s] = { path: "", frames: "1" };
+    setSpriteInputs(init);
+  };
+
+  const handleEditCustom = (id: string) => {
+    const mime = customMimes.find((m) => m.id === id);
+    if (!mime) return;
+    setEditingMime(id);
+    setCreating("manual");
+    setNewName(mime.name);
+    const filled: any = {};
+    for (const s of ALL_STATUSES) {
+      filled[s] = { path: "", frames: String(mime.sprites[s].frames) };
+    }
+    setSpriteInputs(filled);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingMime) return;
+    if (!newName.trim()) { setSaveError("Name is required"); return; }
+    const badFrames = ALL_STATUSES.find((s) => parseFrameSpec(spriteInputs[s].frames) <= 0);
+    if (badFrames) { setSaveError(`Invalid frame count for "${badFrames}"`); return; }
+
+    setSaveError(null);
+    const spriteFiles: Record<Status, { sourcePath: string | null; frames: number }> = {} as any;
+    for (const s of ALL_STATUSES) {
+      spriteFiles[s] = {
+        sourcePath: spriteInputs[s].path || null,
+        frames: parseFrameSpec(spriteInputs[s].frames),
+      };
+    }
+
+    await updateMime(editingMime, newName.trim(), spriteFiles);
+    setEditingMime(null);
+    setCreating(false);
+    setNewName("");
+    clearManualPreviews();
+    const init: any = {};
+    for (const s of ALL_STATUSES) init[s] = { path: "", frames: "1" };
+    setSpriteInputs(init);
+  };
+
+  const handleDeleteCustom = async (id: string) => {
+    if (pet === id) setPet("rottweiler");
+    await deleteMime(id);
+  };
+
+  const clearManualPreviews = () => {
+    if (manualAnimPreview?.url) URL.revokeObjectURL(manualAnimPreview.url);
+    setManualAnimPreview(null);
+  };
+
+  const handleCancelCreate = () => {
+    setCreating(false);
+    setEditingMime(null);
+    setSaveError(null);
+    setNewName("");
+    clearManualPreviews();
+    const init: any = {};
+    for (const s of ALL_STATUSES) init[s] = { path: "", frames: "1" };
+    setSpriteInputs(init);
   };
 
   return (
@@ -179,7 +401,29 @@ export function Settings() {
                 </div>
               </div>
             </div>
-            {mimeCategories.map((cat) => {
+            <div className="settings-section">
+              <div className="settings-section-title">Display Size</div>
+              <div className="settings-card">
+                <div className="settings-row">
+                  <span className="settings-row-label">Scale</span>
+                  <div className="theme-toggle">
+                    {SCALE_PRESETS.map((s) => {
+                      const labels: Record<number, string> = { 0.5: "Tiny", 1: "Normal", 1.5: "Large", 2: "XL" };
+                      return (
+                        <button
+                          key={s}
+                          className={scale === s ? "active" : ""}
+                          onClick={() => setScale(s)}
+                        >
+                          {labels[s]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+            {mimeCategories.filter((cat) => cat.key !== "custom").map((cat) => {
               const mimes = getMimesByCategory(cat.key);
               if (mimes.length === 0) return null;
               return (
@@ -215,6 +459,156 @@ export function Settings() {
                 </div>
               );
             })}
+            <div className="settings-section">
+              <div className="settings-section-title">Create Your Own</div>
+              <p className="settings-section-desc">
+                Import a sprite sheet or pick individual PNGs to build your own mime.{" "}
+                <a
+                  className="settings-link"
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    try {
+                      const dir = await resourceDir();
+                      const path = await join(dir, "docs", "custom-mime-guide.pdf");
+                      console.log("[settings] opening guide:", path);
+                      await openPath(path);
+                    } catch (err) {
+                      console.error("[settings] failed to open guide:", err);
+                      logError(`[settings] failed to open guide: ${err instanceof Error ? err.message : err}`);
+                    }
+                  }}
+                >
+                  Read the guide
+                </a>
+              </p>
+              {creating === "manual" ? (
+                <div className="custom-creator">
+                  <div className="settings-card" style={{ marginBottom: 10 }}>
+                    <div className="settings-row">
+                      <span className="settings-row-label">Name</span>
+                      <input
+                        type="text"
+                        className="settings-input"
+                        style={{ textAlign: "right" }}
+                        value={newName}
+                        placeholder="My Custom Mime"
+                        maxLength={20}
+                        onChange={(e) => setNewName(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="settings-card">
+                    {ALL_STATUSES.map((s) => (
+                      <div className="manual-status-row" key={s}>
+                        <div className="settings-row">
+                          <div>
+                            <span className="settings-row-label status-label">{s}</span>
+                            <div className="status-desc">{STATUS_DESCRIPTIONS[s]}</div>
+                          </div>
+                          <div className="sprite-input-group">
+                            <button className="sprite-pick-btn" onClick={() => handlePickFile(s)}>
+                              {spriteInputs[s].path
+                                ? spriteInputs[s].path.split("/").pop()
+                                : editingMime
+                                  ? customMimes.find((m) => m.id === editingMime)?.sprites[s]?.fileName ?? "Choose PNG"
+                                  : "Choose PNG"}
+                            </button>
+                            <input
+                              type="text"
+                              className="frame-count-input"
+                              value={spriteInputs[s].frames}
+                              onChange={(e) => handleFrameChange(s, e.target.value)}
+                              placeholder="e.g. 1-5"
+                              title="Frame count or range (e.g. 1-5, 41-55,57,58)"
+                            />
+                            <button
+                              className="manual-preview-btn"
+                              disabled={!spriteInputs[s].path}
+                              onClick={() => handleManualPreview(s)}
+                            >
+                              Preview
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {saveError && <div className="save-error">{saveError}</div>}
+                  <div className="custom-creator-actions">
+                    <button className="creator-btn cancel" onClick={handleCancelCreate}>
+                      Cancel
+                    </button>
+                    <button
+                      className="creator-btn save"
+                      onClick={editingMime ? handleSaveEdit : handleSaveCustom}
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              ) : creating === "smart" ? (
+                <SmartImport
+                  onSave={async (mimeName, blobs) => {
+                    const id = await addMimeFromBlobs(mimeName, blobs);
+                    setPet(id);
+                    setCreating(false);
+                  }}
+                  onCancel={handleCancelCreate}
+                />
+              ) : (
+                <>
+                  {customMimes.length > 0 && (
+                    <div className="pet-grid">
+                      {customMimes.map((m) => (
+                        <div key={m.id} className="pet-card-wrapper">
+                          <button
+                            className={`pet-card ${pet === m.id ? "active" : ""}`}
+                            onClick={() => setPet(m.id)}
+                          >
+                            <div
+                              className="pet-preview"
+                              style={{
+                                backgroundImage: customPreviews[m.id] ? `url(${customPreviews[m.id]})` : "none",
+                                backgroundSize: "auto 48px",
+                                backgroundPosition: "0 0",
+                                backgroundRepeat: "no-repeat",
+                                imageRendering: "pixelated",
+                              }}
+                            />
+                            <span className="pet-name">{m.name}</span>
+                          </button>
+                          <button
+                            className="edit-mime-btn"
+                            onClick={(e) => { e.stopPropagation(); handleEditCustom(m.id); }}
+                            title="Edit"
+                            data-testid={`edit-mime-${m.id}`}
+                          >
+                            &#9998;
+                          </button>
+                          <button
+                            className="delete-mime-btn"
+                            onClick={(e) => { e.stopPropagation(); handleDeleteCustom(m.id); }}
+                            title="Delete"
+                          >
+                            x
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="pet-grid add-cards-row">
+                    <button className="pet-card add-card" onClick={() => setCreating("manual")}>
+                      <div className="add-icon">+</div>
+                      <span className="pet-name">Manual</span>
+                    </button>
+                    <button className="pet-card add-card" onClick={() => setCreating("smart")}>
+                      <div className="add-icon">*</div>
+                      <span className="pet-name">Import</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </>
         )}
         {tab === "about" && (
@@ -276,6 +670,17 @@ export function Settings() {
               </div>
             </div>
           </div>
+        )}
+        {manualAnimPreview && (
+          <AnimationPreview
+            spriteUrl={manualAnimPreview.url}
+            frames={manualAnimPreview.frames}
+            label={manualAnimPreview.label}
+            onClose={() => {
+              URL.revokeObjectURL(manualAnimPreview.url);
+              setManualAnimPreview(null);
+            }}
+          />
         )}
       </main>
     </div>

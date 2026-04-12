@@ -11,7 +11,10 @@ import { useVisitors } from "./hooks/useVisitors";
 import { usePeers } from "./hooks/usePeers";
 import { useNickname } from "./hooks/useNickname";
 import { usePet } from "./hooks/usePet";
+import { useScale } from "./hooks/useScale";
 import { useDevMode } from "./hooks/useDevMode";
+import { useWindowAutoSize } from "./hooks/useWindowAutoSize";
+import { useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Menu, MenuItem } from "@tauri-apps/api/menu";
 import "./styles/theme.css";
@@ -25,8 +28,11 @@ function App() {
   const peers = usePeers();
   const { nickname } = useNickname();
   const { pet } = usePet();
+  const { scale } = useScale();
   const devMode = useDevMode();
+  const containerRef = useRef<HTMLDivElement>(null);
   useTheme();
+  useWindowAutoSize(containerRef);
 
   const onContextMenu = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -70,14 +76,16 @@ function App() {
 
   return (
     <div
+      ref={containerRef}
+      data-testid="app-container"
       className={`container ${dragging ? "dragging" : ""} ${scenario ? "scenario-active" : ""}`}
       onMouseDown={onMouseDown}
       onContextMenu={onContextMenu}
     >
-      {scenario && <div className="scenario-badge">SCENARIO</div>}
+      {scenario && <div data-testid="scenario-badge" className="scenario-badge">SCENARIO</div>}
       <SpeechBubble visible={visible} message={message} onDismiss={dismiss} />
       {status !== "visiting" && <Mascot status={status} />}
-      {status === "visiting" && <div style={{ width: 128, height: 128 }} />}
+      {status === "visiting" && <div style={{ width: 128 * scale, height: 128 * scale }} />}
       <StatusPill status={status} glow={visible} />
       {devMode && !scenario && <DevTag />}
       {visitors.map((v, i) => (
