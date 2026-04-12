@@ -1,8 +1,8 @@
 import { useState, useLayoutEffect, useCallback } from "react";
 import { load } from "@tauri-apps/plugin-store";
 import { emit, listen } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
-import { copyFile, mkdir, exists, remove, writeFile } from "@tauri-apps/plugin-fs";
+import { open, save } from "@tauri-apps/plugin-dialog";
+import { copyFile, mkdir, exists, remove, writeFile, readFile } from "@tauri-apps/plugin-fs";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { info } from "@tauri-apps/plugin-log";
@@ -196,6 +196,82 @@ export function useCustomMimes() {
     [mimes, saveMimes, ensureSpritesDir]
   );
 
+  const exportMime = useCallback(async (id: string) => {
+    const mime = mimes.find((m) => m.id === id);
+    if (!mime) return;
+
+    const dir = await ensureSpritesDir();
+    const sprites: Record<string, { frames: number; data: string }> = {};
+
+    for (const status of ALL_STATUSES) {
+      const { fileName, frames } = mime.sprites[status];
+      const bytes = await readFile(`${dir}/${fileName}`);
+      const binary = Array.from(bytes).map((b) => String.fromCharCode(b)).join("");
+      sprites[status] = { frames, data: btoa(binary) };
+    }
+
+    const payload = JSON.stringify({ version: 1, name: mime.name, sprites }, null, 2);
+    const date = new Date().toISOString().slice(0, 10);
+    const safeName = mime.name.replace(/[^a-zA-Z0-9_-]/g, "-");
+    const defaultName = `animime-${safeName}-${date}`;
+
+    const dest = await save({
+      defaultPath: defaultName,
+      filters: [{ name: "Ani-Mime Export", extensions: ["animime"] }],
+    });
+    if (!dest) return;
+
+    const path = dest.endsWith(".animime") ? dest : `${dest}.animime`;
+    const encoder = new TextEncoder();
+    await writeFile(path, encoder.encode(payload));
+    info(`[custom-mimes] exported "${mime.name}" to ${path}`);
+  }, [mimes, ensureSpritesDir]);
+
+  const importMime = useCallback(async (): Promise<string | null> => {
+    const result = await open({
+      multiple: false,
+      filters: [{ name: "Ani-Mime Export", extensions: ["animime"] }],
+    });
+    if (!result) return null;
+
+    const bytes = await readFile(result);
+    const decoder = new TextDecoder();
+    const payload = JSON.parse(decoder.decode(bytes));
+
+    if (payload.version !== 1 || !payload.name || !payload.sprites) {
+      throw new Error("Invalid .animime file");
+    }
+
+    const id = `custom-${Date.now()}`;
+    info(`[custom-mimes] importMime: name="${payload.name}", id=${id}`);
+    const dir = await ensureSpritesDir();
+
+    const sprites: Record<string, { fileName: string; frames: number }> = {};
+    for (const status of ALL_STATUSES) {
+      const entry = payload.sprites[status];
+      if (!entry || !entry.data) {
+        throw new Error(`Missing sprite data for "${status}"`);
+      }
+      const binary = atob(entry.data);
+      const blob = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) blob[i] = binary.charCodeAt(i);
+
+      const fileName = `${id}-${status}.png`;
+      await writeFile(`${dir}/${fileName}`, blob);
+      sprites[status] = { fileName, frames: entry.frames };
+    }
+
+    const newMime: CustomMimeData = {
+      id,
+      name: payload.name,
+      sprites: sprites as Record<Status, { fileName: string; frames: number }>,
+    };
+
+    await saveMimes([...mimes, newMime]);
+    info(`[custom-mimes] imported "${payload.name}" as ${id}`);
+    return id;
+  }, [mimes, saveMimes, ensureSpritesDir]);
+
   const getSpriteUrl = useCallback(
     async (fileName: string): Promise<string> => {
       const base = await appDataDir();
@@ -205,5 +281,5 @@ export function useCustomMimes() {
     []
   );
 
-  return { mimes, loaded, pickSpriteFile, addMime, addMimeFromBlobs, updateMime, deleteMime, getSpriteUrl };
+  return { mimes, loaded, pickSpriteFile, addMime, addMimeFromBlobs, updateMime, deleteMime, exportMime, importMime, getSpriteUrl };
 }

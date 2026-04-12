@@ -73,7 +73,7 @@ export function Settings() {
   const { enabled: autoStartEnabled, setEnabled: setAutoStartEnabled } = useAutoStart();
   const { enabled: autoUpdateEnabled, setEnabled: setAutoUpdateEnabled } = useAutoUpdate();
   const { scale, setScale, SCALE_PRESETS } = useScale();
-  const { mimes: customMimes, pickSpriteFile, addMime, addMimeFromBlobs, updateMime, deleteMime } = useCustomMimes();
+  const { mimes: customMimes, pickSpriteFile, addMime, addMimeFromBlobs, updateMime, deleteMime, exportMime, importMime } = useCustomMimes();
   const [tab, setTab] = useState<Tab>("general");
   const [creating, setCreating] = useState<false | "manual" | "smart">(false);
   const [editingMime, setEditingMime] = useState<string | null>(null);
@@ -586,6 +586,15 @@ export function Settings() {
                             &#9998;
                           </button>
                           <button
+                            className="export-mime-btn"
+                            onClick={(e) => { e.stopPropagation(); exportMime(m.id); }}
+                            title="Export"
+                            data-testid={`export-mime-${m.id}`}
+                            aria-label="Export mime"
+                          >
+                            &#8599;
+                          </button>
+                          <button
                             className="delete-mime-btn"
                             onClick={(e) => { e.stopPropagation(); handleDeleteCustom(m.id); }}
                             title="Delete"
@@ -603,7 +612,22 @@ export function Settings() {
                     </button>
                     <button className="pet-card add-card" onClick={() => setCreating("smart")}>
                       <div className="add-icon">*</div>
-                      <span className="pet-name">Import</span>
+                      <span className="pet-name">Import Sheet</span>
+                    </button>
+                    <button
+                      className="pet-card add-card"
+                      data-testid="import-animime-btn"
+                      onClick={async () => {
+                        try {
+                          const id = await importMime();
+                          if (id) setPet(id);
+                        } catch (err) {
+                          logError(`[settings] import failed: ${err instanceof Error ? err.message : err}`);
+                        }
+                      }}
+                    >
+                      <div className="add-icon">&#8598;</div>
+                      <span className="pet-name">Animime</span>
                     </button>
                   </div>
                 </>
