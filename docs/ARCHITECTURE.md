@@ -16,12 +16,15 @@ A floating macOS desktop mascot that reacts to your terminal and Claude Code act
 │   Hooks      │  /status            │  ┌────────▼────────┐  │                    │ ┌────────┐ │
 └──────────────┘                     │  │  App State      │  │                    │ │Status  │ │
                                      │  │  (sessions map) │  │                    │ │Pill    │ │
-┌──────────────┐     mDNS           │  └────────┬────────┘  │                    │ └────────┘ │
-│  Peer        │ <─────────────────> │           │           │                    │ ┌────────┐ │
-│  Discovery   │  _ani-mime._tcp     │  ┌────────▼────────┐  │                    │ │Visitor │ │
-└──────────────┘                     │  │  Watchdog       │  │                    │ │Dogs    │ │
-                                     │  │  (every 2s)     │  │                    │ └────────┘ │
-                                     └───────────────────────┘                    └────────────┘
+┌──────────────┐  stdio   ┌───────┐ │  └────────┬────────┘  │                    │ └────────┘ │
+│ Claude Code  │ <──────> │  MCP  │ │           │           │                    │ ┌────────┐ │
+│ MCP Client   │          │Server │──> /mcp/*   │           │                    │ │Speech  │ │
+└──────────────┘          └───────┘ │           │           │                    │ │Bubble  │ │
+                                     │  ┌────────▼────────┐  │                    │ └────────┘ │
+┌──────────────┐     mDNS           │  │  Watchdog       │  │                    │ ┌────────┐ │
+│  Peer        │ <─────────────────> │  │  (every 2s)     │  │                    │ │Visitor │ │
+│  Discovery   │  _ani-mime._tcp     │  └─────────────────┘  │                    │ │Dogs    │ │
+└──────────────┘                     └───────────────────────┘                    └────────────┘
 ```
 
 ## Key Design Decisions
@@ -31,6 +34,7 @@ A floating macOS desktop mascot that reacts to your terminal and Claude Code act
 3. **Priority-based state resolution** — Multiple terminals resolve to one UI state: `busy > service > idle > disconnected`.
 4. **Service auto-transition** — Dev servers flash "service" (blue) for 2s then become "idle". Prevents permanently-blue pill.
 5. **mDNS peer discovery** — LAN-local Bonjour for zero-config multi-machine awareness.
+6. **MCP sidecar pattern** — A zero-dependency Node.js MCP server bridges Claude Code to the HTTP server via stdio. Claude Code calls MCP tools, which translate to HTTP requests on `:1234`.
 
 ## Request Lifecycle
 
@@ -72,6 +76,7 @@ End-to-end flow from shell command to pixel on screen:
 | Frontend | React 19, TypeScript 5.8, Vite 7 |
 | Backend | Rust, Tauri 2, tiny_http |
 | Peer discovery | mdns-sd (Bonjour) |
+| MCP server | Node.js, JSON-RPC 2.0 over stdio |
 | Shell hooks | zsh/bash/fish scripts, curl |
 | macOS native | cocoa + objc crates |
 | Package manager | Bun |

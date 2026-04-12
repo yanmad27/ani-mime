@@ -50,6 +50,7 @@ It also integrates with **Claude Code** — the dog knows when Claude is thinkin
 - **Manual Tagging** — zsh hooks classify commands as `task` or `service`
 - **Heartbeat Architecture** — no process tree scanning, no time-based guessing
 - **Claude Code Hooks** — tracks when Claude is actively working vs waiting
+- **MCP Server** — Claude Code can talk to your pet: trigger speech bubbles, play reaction animations, and check pet status via MCP tools
 - **Multi-Session** — handles multiple terminals, priority: busy > service > idle
 - **Auto-Setup** — first launch configures zsh hooks and Claude Code hooks via native macOS dialogs
 - **All Workspaces** — visible on every macOS Space/desktop
@@ -71,6 +72,8 @@ Open the app. On first launch, Ani-Mime will:
 2. Ask to configure Claude Code hooks (optional)
 
 Open a new terminal tab and the mascot starts reacting.
+
+The MCP server is also auto-configured so Claude Code can interact with your pet directly (see [MCP Server](#mcp-server) below).
 
 ### Manual (from source)
 
@@ -143,6 +146,38 @@ If peers can't find each other:
    ```
 
 See [docs/peer-discovery.md](docs/peer-discovery.md) for the full protocol reference.
+
+---
+
+## MCP Server
+
+Ani-Mime includes an MCP (Model Context Protocol) server that lets Claude Code interact with your pet during conversations.
+
+### What It Does
+
+| Tool | Description |
+|------|-------------|
+| `pet_say` | Make your pet say something via a speech bubble |
+| `pet_react` | Trigger a reaction animation (celebrate, nervous, confused, excited, sleep) |
+| `pet_status` | Check what your pet is doing, who's visiting, nearby peers, and uptime |
+
+### Setup
+
+The MCP server is automatically configured during first-launch setup (when you accept Claude Code hooks). If you need to set it up manually:
+
+```bash
+claude mcp add ani-mime -- node ~/.ani-mime/mcp/server.mjs
+```
+
+The server script is updated automatically on every app launch.
+
+### How It Works
+
+```
+Claude Code <--stdio--> MCP Server (Node.js) <--HTTP--> Ani-Mime :1234 --> Pet UI
+```
+
+Claude Code calls MCP tools during conversations. The MCP server translates them to HTTP requests to the local Ani-Mime server, which emits Tauri events to the frontend. The pet reacts with speech bubbles or animation changes.
 
 ---
 

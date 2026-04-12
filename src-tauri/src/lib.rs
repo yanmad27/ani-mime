@@ -383,6 +383,9 @@ pub fn run() {
                 discovery_instance: String::new(),
                 discovery_addrs: Vec::new(),
                 discovery_port: 0,
+                pet: String::new(),
+                nickname: String::new(),
+                started_at: crate::helpers::now_secs(),
             }));
 
             app.manage(app_state.clone());
@@ -427,6 +430,12 @@ pub fn run() {
                     crate::app_log!("[app] no settings file, using defaults");
                     ("Anonymous".to_string(), "rottweiler".to_string())
                 };
+
+                {
+                    let mut st = discovery_state.lock().unwrap();
+                    st.pet = pet.clone();
+                    st.nickname = nickname.clone();
+                }
 
                 discovery::start_discovery(discovery_handle, discovery_state, nickname, pet);
             });

@@ -155,6 +155,48 @@ Example: adding a "compact mode" toggle.
 
 ---
 
+## New MCP Tool
+
+Example: adding a `pet_deliver` tool.
+
+### Steps
+
+1. **Define the tool** — `src-tauri/mcp-server/server.mjs` in the `TOOLS` array:
+   ```javascript
+   {
+     name: "pet_deliver",
+     description: "Make the pet deliver an item to the user",
+     inputSchema: {
+       type: "object",
+       properties: {
+         item: { type: "string", enum: ["coffee", "trophy", "letter"] }
+       },
+       required: ["item"]
+     }
+   }
+   ```
+
+2. **Add handler** — in `callTool()` switch:
+   ```javascript
+   case "pet_deliver": {
+     const res = await httpPost("/mcp/deliver", { item: args.item });
+     return { content: [{ type: "text", text: `Pet delivering: ${args.item}` }] };
+   }
+   ```
+
+3. **Add HTTP endpoint** — `src-tauri/src/server.rs` (before `/debug`):
+   - Parse JSON body
+   - Emit a Tauri event (e.g., `mcp-deliver`)
+   - Return 200
+
+4. **Add frontend listener** — in the appropriate hook or a new hook:
+   - Listen for the event
+   - Trigger the UI effect (animation, bubble, overlay, etc.)
+
+5. **Document** — update `docs/http-api.md` and `docs/events-reference.md`
+
+---
+
 ## New Character/Pet
 
 See [Animation System - Adding a New Character](animation-system.md#adding-a-new-character).
@@ -219,4 +261,5 @@ Example: adding a "history" window.
 - [ ] Does it add constants? → Document in constants-reference.md
 - [ ] Does it touch shell scripts? → Update ALL three shells (zsh, bash, fish)
 - [ ] Does it add a new dependency? → Justify why existing deps can't do it
+- [ ] Is it an MCP tool? → Add to `server.mjs`, HTTP endpoint in `server.rs`, frontend listener
 - [ ] Keep frontend and backend status strings in sync (no codegen yet)

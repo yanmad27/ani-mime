@@ -126,6 +126,25 @@ export function useBubble() {
     };
   }, []);
 
+  // Listen for mcp-say: speech bubble triggered by MCP server / AI agent
+  useEffect(() => {
+    const unlisten = listen<{ message: string; duration_ms: number }>("mcp-say", (e) => {
+      if (!enabled) return;
+
+      clearTimeout(timerRef.current);
+      setMessage(e.payload.message);
+      setVisible(true);
+
+      timerRef.current = setTimeout(() => {
+        setVisible(false);
+      }, e.payload.duration_ms || BUBBLE_DURATION_MS);
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [enabled]);
+
   // Listen for bubble-preview: persistent bubble from scenario (no auto-hide, dismiss manually)
   useEffect(() => {
     const unlisten = listen<string>("bubble-preview", (e) => {

@@ -249,6 +249,94 @@ pub fn start_http_server(app_handle: tauri::AppHandle, app_state: Arc<Mutex<AppS
                 continue;
             }
 
+            // --- /mcp/say (trigger speech bubble) ---
+            if url.starts_with("/mcp/say") && method == "POST" {
+                let mut body = String::new();
+                let reader = req.as_reader();
+                if reader.read_to_string(&mut body).is_ok() {
+                    if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&body) {
+                        let message = payload["message"].as_str().unwrap_or("").to_string();
+                        let duration_secs = payload["duration_secs"].as_u64().unwrap_or(7);
+                        crate::app_log!("[mcp] say: \"{}\" ({}s)", message, duration_secs);
+                        if let Err(e) = app_handle.emit("mcp-say", serde_json::json!({
+                            "message": message,
+                            "duration_ms": duration_secs * 1000,
+                        })) {
+                            crate::app_error!("[mcp] failed to emit mcp-say: {}", e);
+                        }
+                    }
+                }
+                let resp = tiny_http::Response::from_string("ok")
+                    .with_status_code(200)
+                    .with_header(cors.clone());
+                let _ = req.respond(resp);
+                continue;
+            }
+
+            // --- /mcp/react (trigger temporary animation) ---
+            if url.starts_with("/mcp/react") && method == "POST" {
+                let mut body = String::new();
+                let reader = req.as_reader();
+                if reader.read_to_string(&mut body).is_ok() {
+                    if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&body) {
+                        let reaction = payload["reaction"].as_str().unwrap_or("").to_string();
+                        let duration_secs = payload["duration_secs"].as_u64().unwrap_or(3);
+
+                        let mapped_status = match reaction.as_str() {
+                            "celebrate" => "service",
+                            "nervous" => "busy",
+                            "confused" => "searching",
+                            "excited" => "service",
+                            "sleep" => "disconnected",
+                            _ => "idle",
+                        };
+
+                        crate::app_log!("[mcp] react: {} -> {} ({}s)", reaction, mapped_status, duration_secs);
+                        if let Err(e) = app_handle.emit("mcp-react", serde_json::json!({
+                            "status": mapped_status,
+                            "duration_ms": duration_secs * 1000,
+                        })) {
+                            crate::app_error!("[mcp] failed to emit mcp-react: {}", e);
+                        }
+                    }
+                }
+                let resp = tiny_http::Response::from_string("ok")
+                    .with_status_code(200)
+                    .with_header(cors.clone());
+                let _ = req.respond(resp);
+                continue;
+            }
+
+            // --- /mcp/pet-status (return pet info as JSON) ---
+            if url.starts_with("/mcp/pet-status") {
+                let st = app_state.lock().unwrap();
+                let visitors: Vec<serde_json::Value> = st.visitors.iter().map(|v| {
+                    serde_json::json!({ "nickname": v.nickname, "pet": v.pet })
+                }).collect();
+
+                let body = serde_json::json!({
+                    "pet_type": st.pet,
+                    "nickname": st.nickname,
+                    "current_status": st.current_ui,
+                    "sleeping": st.sleeping,
+                    "sessions_active": st.sessions.len(),
+                    "peers_nearby": st.peers.len(),
+                    "visitors": visitors,
+                    "is_visiting": st.visiting.is_some(),
+                    "uptime_secs": now.saturating_sub(st.started_at),
+                });
+                drop(st);
+
+                crate::app_log!("[mcp] pet-status requested");
+                let json_header: tiny_http::Header = "Content-Type: application/json".parse().unwrap();
+                let resp = tiny_http::Response::from_string(body.to_string())
+                    .with_status_code(200)
+                    .with_header(cors.clone())
+                    .with_header(json_header);
+                let _ = req.respond(resp);
+                continue;
+            }
+
             // --- /debug ---
             if url.starts_with("/debug") {
                 crate::app_log!("[http] debug endpoint hit");

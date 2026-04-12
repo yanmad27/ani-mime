@@ -46,9 +46,9 @@ src/
 │       └── registry.ts               # Scenario definitions
 │
 ├── hooks/
-│   ├── useStatus.ts           # Tauri "status-changed" + "dog-away" + "scenario-override"
+│   ├── useStatus.ts           # Tauri "status-changed" + "dog-away" + "scenario-override" + "mcp-react"
 │   ├── useDrag.ts             # Window drag via Tauri startDragging()
-│   ├── useBubble.ts           # Speech bubble visibility + messages
+│   ├── useBubble.ts           # Speech bubble visibility + messages + MCP say
 │   ├── useVisitors.ts         # "visitor-arrived" / "visitor-left" events
 │   ├── usePeers.ts            # "peers-changed" event → PeerInfo[]
 │   ├── useTheme.ts            # Persistent theme (dark/light) + cross-window sync
@@ -105,10 +105,14 @@ src-tauri/
 │   ├── setup/
 │   │   ├── mod.rs             # auto_setup() orchestrator, setup-done marker
 │   │   ├── shell.rs           # Shell detection, RC file injection, dialog prompts
-│   │   └── claude.rs          # Claude Code hooks config + migration
+│   │   ├── claude.rs          # Claude Code hooks config + migration
+│   │   └── mcp.rs             # MCP server installation + Claude Code MCP registration
 │   └── platform/
 │       ├── mod.rs             # Platform module re-exports
 │       └── macos.rs           # NSWindow transparency, workspace visibility, tiling opt-out
+│
+├── mcp-server/
+│   └── server.mjs             # Zero-dependency MCP server (JSON-RPC 2.0 over stdio)
 │
 ├── script/
 │   ├── terminal-mirror.zsh    # Zsh: preexec/precmd hooks, heartbeat, classification
@@ -161,6 +165,9 @@ Shell scripts ──curl──► server.rs ──mutex──► state.rs ──
                                                                     sprites.ts ◄──────┘
                                                                         │
                                                                   mascot.css (animation)
+
+MCP server.mjs ──HTTP──► server.rs /mcp/* ──emit──► useBubble (mcp-say)
+                                                ──► useStatus (mcp-react)
 
 Settings.tsx ──Store──► settings.json ──event──► useTheme/usePet/... ──► App.tsx
 

@@ -17,21 +17,29 @@ See `docs/ARCHITECTURE.md` for full details. Key data flow:
 
 ```
 Shell hooks (curl) → HTTP :1234 → Rust state → Tauri event → React UI
+Claude Code ←stdio→ MCP server (Node.js) ←HTTP→ :1234 → Tauri event → React UI
 ```
 
 ### Backend (`src-tauri/src/`)
 
 | Module | Responsibility |
 |--------|---------------|
-| `lib.rs` | Tauri setup, plugin registration, composition root |
+| `lib.rs` | Tauri setup, plugin registration, tray icon, composition root |
 | `state.rs` | `AppState`, `Session`, `resolve_ui_state()`, `emit_if_changed()` |
-| `server.rs` | HTTP server on `127.0.0.1:1234` (tiny_http) |
+| `server.rs` | HTTP server on `127.0.0.1:1234` (tiny_http), incl. MCP endpoints |
 | `watchdog.rs` | Background thread: service→idle transition, stale session cleanup |
 | `helpers.rs` | `now_secs()`, `get_query_param()` |
 | `setup/mod.rs` | First-launch auto-setup orchestrator |
 | `setup/shell.rs` | Shell detection, native dialogs, RC file injection |
 | `setup/claude.rs` | Claude Code hooks configuration |
-| `platform/macos.rs` | Cocoa/objc window transparency and workspace visibility |
+| `setup/mcp.rs` | MCP server installation + Claude Code MCP registration |
+| `platform/macos.rs` | Cocoa/objc window transparency, workspace visibility, dock visibility |
+
+### MCP Server (`src-tauri/mcp-server/`)
+
+| File | Responsibility |
+|------|---------------|
+| `server.mjs` | Zero-dependency Node.js MCP server (JSON-RPC 2.0 over stdio) |
 
 ### Frontend (`src/`)
 
@@ -40,8 +48,9 @@ Shell hooks (curl) → HTTP :1234 → Rust state → Tauri event → React UI
 | `App.tsx` | Root composition: layout + drag |
 | `components/Mascot.tsx` | Sprite animation with auto-freeze |
 | `components/StatusPill.tsx` | Colored dot + status label |
-| `hooks/useStatus.ts` | Tauri `"status-changed"` event listener |
+| `hooks/useStatus.ts` | Tauri `"status-changed"` + `"mcp-react"` event listener |
 | `hooks/useDrag.ts` | Window drag via Tauri API |
+| `hooks/useBubble.ts` | Speech bubbles: task-completed, welcome, `"mcp-say"` |
 | `constants/sprites.ts` | Sprite file map, frame counts, auto-stop set |
 | `types/status.ts` | `Status` type, `SpriteConfig` interface |
 
@@ -66,6 +75,9 @@ When multiple terminals are open, the UI shows one winner: `busy > service > idl
 - Sessions are removed after 40 seconds with no heartbeat
 - Setup marker file: `~/.ani-mime/setup-done`
 - macOS-only: uses `cocoa` + `objc` crates for window transparency (behind `#[cfg(target_os = "macos")]`)
+- MCP server (`server.mjs`) is installed to `~/.ani-mime/mcp/` on every startup; registered in `~/.claude.json` during first-launch setup
+- MCP endpoints: `/mcp/say` (speech bubble), `/mcp/react` (temp animation), `/mcp/pet-status` (JSON status)
+- MCP reactions map to existing statuses: celebrate/excited→service, nervous→busy, confused→searching, sleep→disconnected
 
 ## Testing
 
@@ -97,5 +109,6 @@ Every interactive or observable UI element must be locatable by automated tests 
 
 - **New UI state**: Update `Status` type → `sprites.ts` → `StatusPill.tsx` → `status-pill.css` → `resolve_ui_state()` in `state.rs`
 - **New HTTP endpoint**: Add route in `server.rs`, lock `AppState` if mutating, call `emit_if_changed()`
+- **New MCP tool**: Add tool definition in `mcp-server/server.mjs`, add HTTP endpoint in `server.rs`, emit Tauri event for frontend
 - **New shell**: Add script in `src-tauri/script/`, add `ShellInfo` in `setup/shell.rs`, add to `tauri.conf.json` bundle resources
 - **Storage**: See `docs/storage.md` for the planned approach (tauri-plugin-store for prefs, SQLite for history)

@@ -35,6 +35,13 @@ User interaction → invoke() command → Rust handler → app.emit() → React 
 | `visitor-arrived` | `{ instance_name, pet, nickname, duration_secs }` | `/visit` route | `useVisitors` |
 | `visitor-left` | `{ instance_name, nickname }` | `/visit-end` route / watchdog | `useVisitors` |
 
+### MCP (AI Agent Interaction)
+
+| Event | Payload | Source | Listener |
+|-------|---------|--------|----------|
+| `mcp-say` | `{ message: string, duration_ms: number }` | `/mcp/say` route | `useBubble` |
+| `mcp-react` | `{ status: string, duration_ms: number }` | `/mcp/react` route | `useStatus` |
+
 ### Dev/Testing
 
 | Event | Payload | Source | Listener |

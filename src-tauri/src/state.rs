@@ -71,6 +71,10 @@ pub struct AppState {
     pub discovery_instance: String,
     pub discovery_addrs: Vec<String>,
     pub discovery_port: u16,
+    // --- Identity (for MCP pet-status) ---
+    pub pet: String,
+    pub nickname: String,
+    pub started_at: u64,
 }
 
 /// Picks the "winning" UI state across all sessions.

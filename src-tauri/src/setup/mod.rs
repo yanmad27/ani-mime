@@ -1,10 +1,12 @@
 mod claude;
+mod mcp;
 pub(crate) mod shell;
 
 use std::path::PathBuf;
 use tauri::Emitter;
 
 use self::claude::{migrate_claude_hooks, setup_claude_hooks};
+use self::mcp::{install_mcp_server, register_mcp_server};
 use self::shell::{detect_shells, install_shell_hooks, ShellInfo};
 use crate::setup::shell::macos_dialog;
 
@@ -25,6 +27,9 @@ pub fn auto_setup(resource_dir: PathBuf, app_handle: tauri::AppHandle) {
         };
         // Always run migrations for existing users
         migrate_claude_hooks(&home);
+
+        // Always install/update MCP server files
+        install_mcp_server(&resource_dir, &home);
 
         let setup_marker = home.join(".ani-mime/setup-done");
 
@@ -115,6 +120,7 @@ pub fn auto_setup(resource_dir: PathBuf, app_handle: tauri::AppHandle) {
                 crate::app_log!("[setup] user chose '{}' for Claude hooks", answer);
                 if answer == "Yes" {
                     setup_claude_hooks(&home);
+                    register_mcp_server(&home);
                 } else {
                     crate::app_log!("[setup] user skipped Claude Code hooks setup");
                 }

@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **MCP Server** — Claude Code can now interact with your desktop pet via Model Context Protocol (MCP) tools
+  - `pet_say` — trigger a speech bubble with a custom message
+  - `pet_react` — play a temporary reaction animation (celebrate, nervous, confused, excited, sleep)
+  - `pet_status` — query the pet's current status, uptime, visitors, and nearby peers
+- Zero-dependency Node.js MCP server (`server.mjs`) using JSON-RPC 2.0 over stdio
+- MCP server auto-installed to `~/.ani-mime/mcp/` on every app launch (keeps up-to-date)
+- MCP server auto-registered in `~/.claude.json` during first-launch Claude Code setup
+- Manual setup: `claude mcp add ani-mime -- node ~/.ani-mime/mcp/server.mjs`
+- New HTTP endpoints: `POST /mcp/say`, `POST /mcp/react`, `GET /mcp/pet-status`
+- New Tauri events: `mcp-say` (speech bubble), `mcp-react` (temporary animation override)
+- `pet`, `nickname`, `started_at` fields added to `AppState` for MCP status reporting
+
 ## [0.15.1] - 2026-04-12
 
 ### Fixed
