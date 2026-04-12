@@ -200,28 +200,46 @@ async function callTool(name, args) {
         try {
           const data = JSON.parse(res.body);
           const usage = data.usage_today || {};
-          const lines = [
-            `Pet: ${data.pet_type} | Status: ${data.current_status}${data.sleeping ? " (sleeping)" : ""}`,
-            `Uptime: ${Math.floor(data.uptime_secs / 60)} min`,
-          ];
-          if (data.current_busy_secs > 0) {
-            lines.push(`Currently busy for: ${Math.floor(data.current_busy_secs / 60)} min`);
+          const tasks = usage.tasks_completed || 0;
+          const codingMins = usage.total_busy_mins || 0;
+          const busyNow = data.current_busy_secs > 0;
+          const busyMins = Math.floor(data.current_busy_secs / 60);
+          const uptimeMins = Math.floor(data.uptime_secs / 60);
+
+          // Build a natural summary Claude can act on
+          let status;
+          if (data.sleeping) {
+            status = "User is away (pet sleeping).";
+          } else if (busyNow) {
+            status = `User is working right now (${busyMins > 0 ? busyMins + " min into current task" : "just started"}).`;
+          } else {
+            status = "User is idle — between tasks.";
           }
-          lines.push(`--- Today's activity ---`);
-          lines.push(`Tasks completed: ${usage.tasks_completed || 0}`);
-          lines.push(`Total coding time: ${usage.total_busy_mins || 0} min`);
-          if (usage.longest_task_mins > 0) {
-            lines.push(`Longest task: ${usage.longest_task_mins} min`);
+
+          let activity;
+          if (tasks === 0) {
+            activity = "No tasks completed yet today.";
+          } else {
+            activity = `Today: ${tasks} task${tasks > 1 ? "s" : ""} done, ${codingMins} min of active coding.`;
           }
-          if (usage.last_task_duration_secs > 0) {
-            lines.push(`Last task took: ${usage.last_task_duration_secs}s`);
+
+          const parts = [status, activity];
+
+          if (codingMins >= 120) {
+            parts.push(`Note: ${codingMins} min of coding today — consider suggesting a break.`);
+          } else if (busyNow && busyMins >= 45) {
+            parts.push(`Note: current task running ${busyMins} min — a long one.`);
           }
-          lines.push(`Sessions: ${data.sessions_active} | Peers nearby: ${data.peers_nearby}`);
+
           if (data.visitors && data.visitors.length > 0) {
-            lines.push(`Visitors: ${data.visitors.map((v) => v.nickname).join(", ")}`);
+            parts.push(`Visitors on screen: ${data.visitors.map((v) => v.nickname).join(", ")}.`);
           }
+          if (data.peers_nearby > 0) {
+            parts.push(`${data.peers_nearby} peer${data.peers_nearby > 1 ? "s" : ""} nearby on LAN.`);
+          }
+
           return {
-            content: [{ type: "text", text: lines.join("\n") }],
+            content: [{ type: "text", text: parts.join(" ") }],
           };
         } catch {
           return { content: [{ type: "text", text: res.body }] };
