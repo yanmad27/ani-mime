@@ -596,9 +596,9 @@ test('export Charlotte mime as .animime file', async ({ page }) => {
 });
 
 // ---------------------------------------------------------------------------
-// 15. Delete Charlotte then re-import from .animime file
+// 15. Delete Charlotte custom mime
 // ---------------------------------------------------------------------------
-test('delete Charlotte then re-import from .animime file', async ({ page }) => {
+test('delete Charlotte custom mime', async ({ page }) => {
   await loadWithMock(page, '/settings.html');
 
   const mimeId = 'custom-1776007930810';
@@ -626,7 +626,7 @@ test('delete Charlotte then re-import from .animime file', async ({ page }) => {
   }, charlotte);
   await expect(page.locator('.pet-card-wrapper .pet-name', { hasText: 'Charlotte' })).toBeVisible();
 
-  // --- Delete Charlotte ---
+  // Hover to reveal delete button, then click it
   const charlotteWrapper = page.locator('.pet-card-wrapper', {
     has: page.locator('.pet-name', { hasText: 'Charlotte' }),
   });
@@ -635,17 +635,35 @@ test('delete Charlotte then re-import from .animime file', async ({ page }) => {
 
   // Charlotte should be gone
   await expect(page.locator('.pet-card-wrapper .pet-name', { hasText: 'Charlotte' })).not.toBeVisible();
+});
 
-  // --- Build .animime payload from real sprite files ---
+// ---------------------------------------------------------------------------
+// 16. Import Charlotte from .animime file
+// ---------------------------------------------------------------------------
+test('import Charlotte from .animime file', async ({ page }) => {
+  await loadWithMock(page, '/settings.html');
+
+  const charlotte = {
+    idle:          { frames: 12 },
+    busy:          { frames: 38 },
+    service:       { frames: 11 },
+    disconnected:  { frames: 7 },
+    searching:     { frames: 8 },
+    initializing:  { frames: 5 },
+    visiting:      { frames: 24 },
+  };
+
+  // Build .animime payload from real Charlotte sprite files
   const spritesDir = path.resolve(
     os.homedir(),
     'Library/Application Support/com.vietnguyenwsilentium.ani-mime/custom-sprites',
   );
+  const mimeId = 'custom-1776007930810';
   const animimeSprites: Record<string, { frames: number; data: string }> = {};
-  for (const [status, info] of Object.entries(charlotte.sprites)) {
-    const filePath = path.join(spritesDir, (info as any).fileName);
-    const b64 = readFileSync(filePath).toString('base64');
-    animimeSprites[status] = { frames: (info as any).frames, data: b64 };
+  for (const [status, info] of Object.entries(charlotte)) {
+    const fileName = `${mimeId}-${status}.png`;
+    const b64 = readFileSync(path.join(spritesDir, fileName)).toString('base64');
+    animimeSprites[status] = { frames: info.frames, data: b64 };
   }
   const animimePayload = JSON.stringify({ version: 1, name: 'Charlotte', sprites: animimeSprites });
 
@@ -656,17 +674,20 @@ test('delete Charlotte then re-import from .animime file', async ({ page }) => {
     (window as any).__MOCK_READ_FILE_BYTES__ = encoder.encode(payload);
   }, animimePayload);
 
-  // --- Import via .animime button ---
+  // Navigate to Mime tab
+  await page.click('.sidebar-item:nth-child(2)');
+  await expect(page.locator('.settings-title')).toHaveText('Mime');
+
+  // Click import .animime button
   await page.click('[data-testid="import-animime-btn"]');
 
-  // Charlotte should reappear in the mime list
+  // Charlotte should appear in the mime list
   await expect(page.locator('.pet-card-wrapper .pet-name', { hasText: 'Charlotte' })).toBeVisible();
 
   // Verify the imported mime was stored with correct frame counts
   const storedMimes = await page.evaluate(() => {
-    return (window as any).__TEST_EMIT__ && new Promise<any>((resolve) => {
-      // Read from the mock store
-      const stores = (window as any).__TAURI_INTERNALS__.invoke('plugin:store|load', { path: 'settings.json' })
+    return new Promise<any>((resolve) => {
+      (window as any).__TAURI_INTERNALS__.invoke('plugin:store|load', { path: 'settings.json' })
         .then((rid: number) => (window as any).__TAURI_INTERNALS__.invoke('plugin:store|get', { rid, key: 'customMimes' }))
         .then((val: any) => resolve(val ? val[0] : null));
     });
