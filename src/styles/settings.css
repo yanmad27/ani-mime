@@ -590,8 +590,29 @@
   font-family: inherit;
 }
 
+.export-mime-btn {
+  position: absolute;
+  bottom: -4px;
+  left: -4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: #34c759;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-family: inherit;
+}
+
 .pet-card-wrapper:hover .edit-mime-btn,
-.pet-card-wrapper:hover .delete-mime-btn {
+.pet-card-wrapper:hover .delete-mime-btn,
+.pet-card-wrapper:hover .export-mime-btn {
   display: flex;
 }
 
