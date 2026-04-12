@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tauriMockScript } from './tauri-mock';
@@ -488,4 +489,106 @@ test('SmartImport Charlotte with auto-fill name and frame selection', async ({ p
   // SmartImport should close and Charlotte appears in mime list
   await expect(page.locator('.smart-import')).not.toBeVisible();
   await expect(page.locator('.pet-card-wrapper .pet-name', { hasText: 'Charlotte' })).toBeVisible();
+});
+
+// ---------------------------------------------------------------------------
+// 14. Export Charlotte as .animime file
+// ---------------------------------------------------------------------------
+test('export Charlotte mime as .animime file', async ({ page }) => {
+  await loadWithMock(page, '/settings.html');
+
+  const mimeId = 'custom-1776007930810';
+  const charlotte = {
+    id: mimeId,
+    name: 'Charlotte',
+    sprites: {
+      idle:          { fileName: `${mimeId}-idle.png`,          frames: 12 },
+      busy:          { fileName: `${mimeId}-busy.png`,          frames: 38 },
+      service:       { fileName: `${mimeId}-service.png`,       frames: 11 },
+      disconnected:  { fileName: `${mimeId}-disconnected.png`,  frames: 7 },
+      searching:     { fileName: `${mimeId}-searching.png`,     frames: 8 },
+      initializing:  { fileName: `${mimeId}-initializing.png`,  frames: 5 },
+      visiting:      { fileName: `${mimeId}-visiting.png`,      frames: 24 },
+    },
+  };
+
+  // Load real Charlotte sprite PNGs and inject as mock file map
+  const spritesDir = path.resolve(
+    os.homedir(),
+    'Library/Application Support/com.vietnguyenwsilentium.ani-mime/custom-sprites',
+  );
+  const fileMap: Record<string, string> = {};
+  for (const [status, info] of Object.entries(charlotte.sprites)) {
+    const filePath = path.join(spritesDir, (info as any).fileName);
+    fileMap[(info as any).fileName] = readFileSync(filePath).toString('base64');
+  }
+
+  await page.evaluate(({ fileMap, mimeId }) => {
+    // Inject per-file read map (base64 → Uint8Array)
+    const map: Record<string, Uint8Array> = {};
+    for (const [name, b64] of Object.entries(fileMap)) {
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      map[name] = bytes;
+    }
+    (window as any).__MOCK_READ_FILE_MAP__ = map;
+
+    // Mock save dialog to return a path
+    (window as any).__MOCK_SAVE_DIALOG_RESULT__ = `/mock/export/Charlotte.animime`;
+  }, { fileMap, mimeId });
+
+  // Navigate to Mime tab
+  await page.click('.sidebar-item:nth-child(2)');
+  await expect(page.locator('.settings-title')).toHaveText('Mime');
+
+  // Inject Charlotte into custom mimes
+  await page.evaluate((data) => {
+    (window as any).__TEST_EMIT__('custom-mimes-changed', [data]);
+  }, charlotte);
+
+  // Charlotte should appear in the custom section
+  await expect(page.locator('.pet-card-wrapper .pet-name', { hasText: 'Charlotte' })).toBeVisible();
+
+  // Hover to reveal export button, then click it
+  const charlotteWrapper = page.locator('.pet-card-wrapper', {
+    has: page.locator('.pet-name', { hasText: 'Charlotte' }),
+  });
+  await charlotteWrapper.hover();
+  await page.click(`[data-testid="export-mime-${mimeId}"]`);
+
+  // Wait for export to complete — writeFile should have been called
+  await page.waitForFunction(() => {
+    const files = (window as any).__MOCK_WRITTEN_FILES__;
+    return files && files.length > 0;
+  });
+
+  // Read and verify the exported .animime data
+  const exported = await page.evaluate(() => {
+    const files = (window as any).__MOCK_WRITTEN_FILES__;
+    const last = files[files.length - 1];
+    const raw = last.contents;
+    const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(Object.values(raw) as number[]);
+    const text = new TextDecoder().decode(bytes);
+    return { path: last.path, json: JSON.parse(text) };
+  });
+
+  // Verify export path
+  expect(exported.path).toContain('Charlotte.animime');
+
+  // Verify .animime structure
+  expect(exported.json.version).toBe(1);
+  expect(exported.json.name).toBe('Charlotte');
+
+  // Verify all 7 statuses with correct frame counts
+  const expectedFrames: Record<string, number> = {
+    idle: 12, busy: 38, service: 11, disconnected: 7,
+    searching: 8, initializing: 5, visiting: 24,
+  };
+  for (const [status, frames] of Object.entries(expectedFrames)) {
+    expect(exported.json.sprites[status]).toBeDefined();
+    expect(exported.json.sprites[status].frames).toBe(frames);
+    // Each sprite should have non-empty base64 data
+    expect(exported.json.sprites[status].data.length).toBeGreaterThan(0);
+  }
 });
