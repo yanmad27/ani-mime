@@ -151,7 +151,7 @@ export const tauriMockScript = `
     if (cmd === 'plugin:fs|exists')     return false;
     if (cmd === 'plugin:fs|mkdir')      return null;
     if (cmd === 'plugin:fs|copy_file')  return null;
-    if (cmd === 'plugin:fs|read_file')  return new Uint8Array(0);
+    if (cmd === 'plugin:fs|read_file')  return window.__MOCK_READ_FILE_BYTES__ ?? new Uint8Array(0);
     if (cmd === 'plugin:fs|write_file') return null;
     if (cmd === 'plugin:fs|remove')     return null;
 

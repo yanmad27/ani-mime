@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tauriMockScript } from './tauri-mock';
+
+const __filename = fileURLToPath(import.meta.url);
+const __e2eDir = path.dirname(__filename);
 
 // Helper: inject mock before navigation so it's available when React boots.
 async function loadWithMock(page: import('@playwright/test').Page, path = '/') {
@@ -398,4 +404,88 @@ test('edit Charlotte sprite: rename and change busy frame range', async ({ page 
   const allNames = await page.locator('.pet-card-wrapper .pet-name').allTextContents();
   expect(allNames).toContain('Charlotte v2');
   expect(allNames).not.toContain('Charlotte');
+});
+
+// ---------------------------------------------------------------------------
+// 13. SmartImport Charlotte: auto-fill name and custom frame selection
+// ---------------------------------------------------------------------------
+test('SmartImport Charlotte with auto-fill name and frame selection', async ({ page }) => {
+  await loadWithMock(page, '/settings.html');
+
+  // Load Charlotte sprite sheet and inject as mock readFile result
+  const charlottePath = path.resolve(__e2eDir, '../src/__tests__/fixtures/sprites/charlotte/input.png');
+  const b64 = readFileSync(charlottePath).toString('base64');
+
+  await page.evaluate((data: string) => {
+    const binary = atob(data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    (window as any).__MOCK_READ_FILE_BYTES__ = bytes;
+    (window as any).__MOCK_DIALOG_RESULT__ = '/mock/sprites/Charlotte.png';
+  }, b64);
+
+  // Navigate to Mime tab
+  await page.click('.sidebar-item:nth-child(2)');
+  await expect(page.locator('.settings-title')).toHaveText('Mime');
+
+  // Click "Import Sheet" to trigger file dialog mock → SmartImport opens
+  await page.click('.pet-card.add-card:has-text("Import Sheet")');
+
+  // Wait for sprite sheet processing — frame assignments should appear
+  const frameAssign = page.locator('.smart-import-frame-assign');
+  await expect(frameAssign.first()).toBeVisible();
+  await expect(frameAssign).toHaveCount(7);
+
+  // Verify name is auto-filled as "Charlotte" (filename without extension)
+  const nameInput = page.locator('.smart-import .settings-input');
+  await expect(nameInput).toHaveValue('Charlotte');
+
+  // Frame ranges matching the Charlotte sprite sheet assignment
+  // (from screenshots: idle=1-5,51-55,57,58 busy=6-43 etc.)
+  const frameRanges: Record<string, { input: string; count: number }> = {
+    idle:          { input: '1-5,51-55,57,58', count: 12 },
+    busy:          { input: '6-43',            count: 38 },
+    service:       { input: '14-19',           count: 6 },
+    disconnected:  { input: '44-50',           count: 7 },
+    searching:     { input: '35-43',           count: 9 },
+    initializing:  { input: '6-13',            count: 8 },
+    visiting:      { input: '20-43',           count: 24 },
+  };
+  const statusOrder = ['idle', 'busy', 'service', 'disconnected', 'searching', 'initializing', 'visiting'];
+
+  // Edit frame ranges and verify thumbnails update
+  const frameInputs = page.locator('.smart-import-frame-input');
+  for (let i = 0; i < statusOrder.length; i++) {
+    const status = statusOrder[i];
+    const input = frameInputs.nth(i);
+    await input.clear();
+    await input.fill(frameRanges[status].input);
+    await input.blur(); // triggers thumbnail update
+  }
+
+  // Verify each status shows the correct number of frame thumbnails with numbers
+  for (let i = 0; i < statusOrder.length; i++) {
+    const status = statusOrder[i];
+    const assign = frameAssign.nth(i);
+    const thumbs = assign.locator('.smart-import-frame-thumb-item');
+    const nums = assign.locator('.smart-import-frame-num');
+
+    // Correct frame count
+    await expect(thumbs).toHaveCount(frameRanges[status].count);
+    // Each thumbnail has a frame number label
+    await expect(nums).toHaveCount(frameRanges[status].count);
+  }
+
+  // Verify first frame number for idle is "1"
+  const idleFirstNum = frameAssign.first().locator('.smart-import-frame-num').first();
+  await expect(idleFirstNum).toHaveText('1');
+
+  // Save the mime
+  const saveBtn = page.locator('.creator-btn.save');
+  await expect(saveBtn).toBeEnabled();
+  await saveBtn.click();
+
+  // SmartImport should close and Charlotte appears in mime list
+  await expect(page.locator('.smart-import')).not.toBeVisible();
+  await expect(page.locator('.pet-card-wrapper .pet-name', { hasText: 'Charlotte' })).toBeVisible();
 });
