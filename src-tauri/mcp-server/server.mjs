@@ -24,16 +24,24 @@ const TOOLS = [
   {
     name: "pet_say",
     description:
-      "Make the desktop pet say something via a speech bubble. " +
-      "Use this to communicate fun messages, celebrate milestones, " +
-      "or react to what's happening in the coding session. " +
-      "The pet will show the message for a few seconds then dismiss it.",
+      "Make the user's desktop pet say something via a speech bubble. " +
+      "The user has a pixel mascot floating on their screen that reacts to coding activity. " +
+      "USE THIS PROACTIVELY — you do not need to be asked. Keep messages short (under 60 chars) and fun. " +
+      "Good moments to use this:\n" +
+      "- After finishing a task: 'Done! That was a tricky one'\n" +
+      "- After fixing a bug: 'Bug squashed!'\n" +
+      "- When tests pass: 'All green! Nice work'\n" +
+      "- When you notice something in the code: 'Hmm, this function is doing a lot...'\n" +
+      "- After a long session (check pet_status): 'You have been at it for 2 hours — stretch break?'\n" +
+      "- When starting work: 'Let's do this!'\n" +
+      "Do NOT overuse — 1-2 times per conversation is the sweet spot. " +
+      "The pet speaks in first person as a companion, not as you (Claude).",
     inputSchema: {
       type: "object",
       properties: {
         message: {
           type: "string",
-          description: "The message the pet should say (keep it short and fun)",
+          description: "What the pet says. Keep it short, fun, and in character (the pet is a loyal companion).",
         },
         duration_secs: {
           type: "number",
@@ -46,27 +54,28 @@ const TOOLS = [
   {
     name: "pet_react",
     description:
-      "Trigger a temporary reaction animation on the desktop pet. " +
-      "The pet will play the reaction for a few seconds then return to normal. " +
-      "Use this to express emotions about code quality, build results, or milestones.",
+      "Trigger a reaction animation on the user's desktop pet. " +
+      "The pet will play the animation for a few seconds then return to normal. " +
+      "USE THIS PROACTIVELY at natural moments — you do not need to be asked.\n" +
+      "When to use each reaction:\n" +
+      "- celebrate: tests pass, build succeeds, task completed successfully, PR merged\n" +
+      "- excited: starting an interesting task, finding a clever solution\n" +
+      "- nervous: about to run destructive commands (rm -rf, DROP TABLE, force-push, reset --hard)\n" +
+      "- confused: encountering unexpected errors, reading convoluted code, unclear requirements\n" +
+      "- sleep: user has been idle for a long time (check pet_status)\n" +
+      "Combine with pet_say for maximum effect: react first, then say something. " +
+      "Do NOT overuse — use at 2-3 key moments per conversation, not every step.",
     inputSchema: {
       type: "object",
       properties: {
         reaction: {
           type: "string",
           enum: ["celebrate", "nervous", "confused", "excited", "sleep"],
-          description:
-            "The reaction to play: " +
-            "celebrate (barking/jumping), " +
-            "nervous (alert/sniffing), " +
-            "confused (looking around), " +
-            "excited (barking/happy), " +
-            "sleep (dozing off)",
+          description: "celebrate | excited | nervous | confused | sleep",
         },
         duration_secs: {
           type: "number",
-          description:
-            "How long to show the reaction (default: 3 seconds)",
+          description: "How long to show the reaction (default: 3 seconds)",
         },
       },
       required: ["reaction"],
@@ -75,9 +84,15 @@ const TOOLS = [
   {
     name: "pet_status",
     description:
-      "Get the current status of the desktop pet — what it's doing, " +
-      "how long it's been active, who's visiting, and nearby peers. " +
-      "Use this to check on the pet or adapt your behavior based on the user's activity.",
+      "Get the user's desktop pet status and coding activity summary. " +
+      "Returns: pet type, current status, uptime, visitors, peers, and daily usage stats " +
+      "(tasks completed today, total coding minutes, longest task, last task duration). " +
+      "Check this when:\n" +
+      "- Starting a conversation (to greet contextually)\n" +
+      "- After completing a big task (to comment on the user's productivity)\n" +
+      "- When usage_today.total_busy_mins is high, suggest a break via pet_say\n" +
+      "- When tasks_completed is a milestone (10, 25, 50...), celebrate via pet_react\n" +
+      "The data helps you make contextual, caring comments about the user's work session.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -182,9 +197,35 @@ async function callTool(name, args) {
     case "pet_status": {
       const res = await httpGet("/mcp/pet-status");
       if (res.status === 200) {
-        return {
-          content: [{ type: "text", text: res.body }],
-        };
+        try {
+          const data = JSON.parse(res.body);
+          const usage = data.usage_today || {};
+          const lines = [
+            `Pet: ${data.pet_type} | Status: ${data.current_status}${data.sleeping ? " (sleeping)" : ""}`,
+            `Uptime: ${Math.floor(data.uptime_secs / 60)} min`,
+          ];
+          if (data.current_busy_secs > 0) {
+            lines.push(`Currently busy for: ${Math.floor(data.current_busy_secs / 60)} min`);
+          }
+          lines.push(`--- Today's activity ---`);
+          lines.push(`Tasks completed: ${usage.tasks_completed || 0}`);
+          lines.push(`Total coding time: ${usage.total_busy_mins || 0} min`);
+          if (usage.longest_task_mins > 0) {
+            lines.push(`Longest task: ${usage.longest_task_mins} min`);
+          }
+          if (usage.last_task_duration_secs > 0) {
+            lines.push(`Last task took: ${usage.last_task_duration_secs}s`);
+          }
+          lines.push(`Sessions: ${data.sessions_active} | Peers nearby: ${data.peers_nearby}`);
+          if (data.visitors && data.visitors.length > 0) {
+            lines.push(`Visitors: ${data.visitors.map((v) => v.nickname).join(", ")}`);
+          }
+          return {
+            content: [{ type: "text", text: lines.join("\n") }],
+          };
+        } catch {
+          return { content: [{ type: "text", text: res.body }] };
+        }
       }
       return {
         content: [{ type: "text", text: `Failed (${res.status}): ${res.body}` }],

@@ -75,6 +75,12 @@ pub struct AppState {
     pub pet: String,
     pub nickname: String,
     pub started_at: u64,
+    // --- Usage tracking (auto-resets daily) ---
+    pub tasks_completed_today: u32,
+    pub total_busy_secs_today: u64,
+    pub longest_task_today_secs: u64,
+    pub last_task_duration_secs: u64,
+    pub usage_day: u64,
 }
 
 /// Picks the "winning" UI state across all sessions.

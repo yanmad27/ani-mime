@@ -64,18 +64,41 @@ pub fn start_http_server(app_handle: tauri::AppHandle, app_state: Arc<Mutex<AppS
                                 emit_if_changed(&app_handle, &mut st);
                             } else if url.contains("state=idle") {
                                 let busy_since = session.busy_since;
-                                if busy_since > 0 {
-                                    let duration = now.saturating_sub(busy_since);
-                                    crate::app_log!("[http] pid={} task completed ({}s)", pid, duration);
-                                    if let Err(e) = app_handle.emit("task-completed", TaskCompleted { duration_secs: duration }) {
-                                        crate::app_error!("[http] failed to emit task-completed: {}", e);
-                                    }
-                                }
+                                let task_duration = if busy_since > 0 {
+                                    Some(now.saturating_sub(busy_since))
+                                } else {
+                                    None
+                                };
 
                                 session.busy_type.clear();
                                 session.ui_state = "idle".to_string();
                                 session.service_since = 0;
                                 session.busy_since = 0;
+                                // Drop session borrow before accessing st fields
+                                drop(session);
+
+                                if let Some(duration) = task_duration {
+                                    crate::app_log!("[http] pid={} task completed ({}s)", pid, duration);
+                                    if let Err(e) = app_handle.emit("task-completed", TaskCompleted { duration_secs: duration }) {
+                                        crate::app_error!("[http] failed to emit task-completed: {}", e);
+                                    }
+
+                                    // Update daily usage counters
+                                    let today = now / 86400;
+                                    if today != st.usage_day {
+                                        st.usage_day = today;
+                                        st.tasks_completed_today = 0;
+                                        st.total_busy_secs_today = 0;
+                                        st.longest_task_today_secs = 0;
+                                    }
+                                    st.tasks_completed_today += 1;
+                                    st.total_busy_secs_today += duration;
+                                    st.last_task_duration_secs = duration;
+                                    if duration > st.longest_task_today_secs {
+                                        st.longest_task_today_secs = duration;
+                                    }
+                                }
+
                                 crate::app_log!("[http] pid={} -> idle", pid);
                                 emit_if_changed(&app_handle, &mut st);
                             } else {
@@ -314,6 +337,13 @@ pub fn start_http_server(app_handle: tauri::AppHandle, app_state: Arc<Mutex<AppS
                     serde_json::json!({ "nickname": v.nickname, "pet": v.pet })
                 }).collect();
 
+                // Compute current busy duration (longest active busy session)
+                let current_busy_secs = st.sessions.values()
+                    .filter(|s| s.ui_state == "busy" && s.busy_since > 0)
+                    .map(|s| now.saturating_sub(s.busy_since))
+                    .max()
+                    .unwrap_or(0);
+
                 let body = serde_json::json!({
                     "pet_type": st.pet,
                     "nickname": st.nickname,
@@ -324,6 +354,13 @@ pub fn start_http_server(app_handle: tauri::AppHandle, app_state: Arc<Mutex<AppS
                     "visitors": visitors,
                     "is_visiting": st.visiting.is_some(),
                     "uptime_secs": now.saturating_sub(st.started_at),
+                    "current_busy_secs": current_busy_secs,
+                    "usage_today": {
+                        "tasks_completed": st.tasks_completed_today,
+                        "total_busy_mins": st.total_busy_secs_today / 60,
+                        "longest_task_mins": st.longest_task_today_secs / 60,
+                        "last_task_duration_secs": st.last_task_duration_secs,
+                    },
                 });
                 drop(st);
 

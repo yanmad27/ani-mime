@@ -469,6 +469,11 @@ pub fn run() {
                 pet: String::new(),
                 nickname: String::new(),
                 started_at: crate::helpers::now_secs(),
+                tasks_completed_today: 0,
+                total_busy_secs_today: 0,
+                longest_task_today_secs: 0,
+                last_task_duration_secs: 0,
+                usage_day: crate::helpers::now_secs() / 86400,
             }));
 
             app.manage(app_state.clone());
