@@ -11,9 +11,9 @@ import {
   getFramePreview,
   createStripFromFrames,
   type Frame,
-  type BgColor,
 } from "../utils/spriteSheetProcessor";
 import { ALL_STATUSES } from "../hooks/useCustomMimes";
+import { AnimationPreview } from "./AnimationPreview";
 
 interface SmartImportProps {
   onSave: (name: string, blobs: Record<Status, { blob: Uint8Array; frames: number }>) => Promise<void>;
@@ -73,19 +73,13 @@ export function SmartImport({ onSave, onCancel }: SmartImportProps) {
     for (const s of ALL_STATUSES) init[s] = "";
     return init;
   });
-  const [previewFrames, setPreviewFrames] = useState<Record<Status, string[]>>(() => {
-    const init: any = {};
-    for (const s of ALL_STATUSES) init[s] = [];
-    return init;
-  });
   const [name, setName] = useState("");
   const [processing, setProcessing] = useState(false);
   const [fileName, setFileName] = useState("");
-  const [bgColor, setBgColor] = useState<BgColor | null>(null);
-  const [imgElement, setImgElement] = useState<HTMLImageElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [allFramePreviews, setAllFramePreviews] = useState<string[]>([]);
+  const [animPreview, setAnimPreview] = useState<{ url: string; frames: number; label: string } | null>(null);
 
   const handlePickSheet = useCallback(async () => {
     setError(null);
@@ -104,9 +98,7 @@ export function SmartImport({ onSave, onCancel }: SmartImportProps) {
       const src = URL.createObjectURL(blob);
       const img = await loadImage(src);
       URL.revokeObjectURL(src);
-      setImgElement(img);
-      const { canvas: prepared, bgColor: detectedBg } = prepareCanvas(img);
-      setBgColor(detectedBg);
+      const { canvas: prepared } = prepareCanvas(img);
       setCanvas(prepared);
 
       const detected = detectRows(prepared);
@@ -121,18 +113,14 @@ export function SmartImport({ onSave, onCancel }: SmartImportProps) {
       // Auto-assign: distribute frames evenly across statuses
       const perStatus = Math.max(1, Math.floor(allFrames.length / ALL_STATUSES.length));
       const autoInputs: Record<string, string> = {};
-      const autoPreviews: Record<string, string[]> = {};
       for (let si = 0; si < ALL_STATUSES.length; si++) {
         const start = si * perStatus + 1;
         const end = si === ALL_STATUSES.length - 1
           ? allFrames.length
           : Math.min((si + 1) * perStatus, allFrames.length);
         autoInputs[ALL_STATUSES[si]] = `${start}-${end}`;
-        const indices = parseFrameInput(`${start}-${end}`, allFrames.length);
-        autoPreviews[ALL_STATUSES[si]] = indices.map((i) => getFramePreview(prepared, allFrames[i]));
       }
       setFrameInputs(autoInputs as Record<Status, string>);
-      setPreviewFrames(autoPreviews as Record<Status, string[]>);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to load image";
       logError(`[smart-import] handlePickSheet failed: ${msg}`);
@@ -140,34 +128,17 @@ export function SmartImport({ onSave, onCancel }: SmartImportProps) {
     }
   }, []);
 
-  const reprocessWithColor = useCallback((newColor: BgColor) => {
-    if (!imgElement) return;
-    setBgColor(newColor);
-    const { canvas: prepared } = prepareCanvas(imgElement, newColor);
-    setCanvas(prepared);
-
-    const detected = detectRows(prepared);
-    const allFrames = extractFrames(detected);
-    setFrames(allFrames);
-
-    // Reset inputs
-    const resetInputs: Record<string, string> = {};
-    const resetPreviews: Record<string, string[]> = {};
-    for (const s of ALL_STATUSES) {
-      resetInputs[s] = "";
-      resetPreviews[s] = [];
-    }
-    setFrameInputs(resetInputs as Record<Status, string>);
-    setPreviewFrames(resetPreviews as Record<Status, string[]>);
-    setAllFramePreviews([]);
-  }, [imgElement]);
-
-  const handlePreview = useCallback((status: Status) => {
+  const handlePreview = useCallback(async (status: Status) => {
     if (!canvas || frames.length === 0) return;
     const indices = parseFrameInput(frameInputs[status], frames.length);
-    const previews = indices.map((i) => getFramePreview(canvas, frames[i]));
-    setPreviewFrames((prev) => ({ ...prev, [status]: previews }));
-  }, [canvas, frames, frameInputs]);
+    if (indices.length === 0) return;
+
+    const strip = await createStripFromFrames(canvas, frames, indices);
+    const blob = new Blob([strip.blob], { type: "image/png" });
+    const url = URL.createObjectURL(blob);
+    if (animPreview?.url) URL.revokeObjectURL(animPreview.url);
+    setAnimPreview({ url, frames: strip.frames, label: STATUS_LABELS[status] });
+  }, [canvas, frames, frameInputs, animPreview]);
 
   const handleShowAllFrames = useCallback(() => {
     if (!canvas || frames.length === 0) return;
@@ -184,7 +155,13 @@ export function SmartImport({ onSave, onCancel }: SmartImportProps) {
   });
 
   const handleSave = useCallback(async () => {
-    if (!canvas || !name.trim() || !allStatusesAssigned) return;
+    if (!name.trim()) { setError("Name is required"); return; }
+    if (!canvas) { setError("No sprite sheet loaded"); return; }
+    if (!allStatusesAssigned) {
+      const missing = ALL_STATUSES.find((s) => parseFrameInput(frameInputs[s], frames.length).length === 0);
+      setError(`Assign frames to "${missing}"`);
+      return;
+    }
     setProcessing(true);
     setError(null);
 
@@ -210,9 +187,6 @@ export function SmartImport({ onSave, onCancel }: SmartImportProps) {
 
   return (
     <div className="smart-import">
-      {error && (
-        <div className="smart-import-error">{error}</div>
-      )}
       {!canvas ? (
         <div className="smart-import-pick">
           <div className="settings-card">
@@ -254,41 +228,6 @@ export function SmartImport({ onSave, onCancel }: SmartImportProps) {
                 </button>
               </div>
             </div>
-            <div className="settings-row">
-              <span className="settings-row-label">Background</span>
-              <div className="smart-import-bg-picker">
-                {bgColor && (
-                  <>
-                    <div
-                      className="smart-import-bg-swatch"
-                      style={{ backgroundColor: `rgb(${bgColor.r},${bgColor.g},${bgColor.b})` }}
-                    />
-                    <span className="smart-import-bg-hex">
-                      #{bgColor.r.toString(16).padStart(2, "0")}{bgColor.g.toString(16).padStart(2, "0")}{bgColor.b.toString(16).padStart(2, "0")}
-                    </span>
-                  </>
-                )}
-                <select
-                  className="smart-import-select"
-                  value=""
-                  onChange={(e) => {
-                    const hex = e.target.value;
-                    if (!hex) return;
-                    const r = parseInt(hex.slice(1, 3), 16);
-                    const g = parseInt(hex.slice(3, 5), 16);
-                    const b = parseInt(hex.slice(5, 7), 16);
-                    reprocessWithColor({ r, g, b });
-                  }}
-                >
-                  <option value="">Change...</option>
-                  <option value="#00B800">Green</option>
-                  <option value="#FF00FF">Magenta</option>
-                  <option value="#0000FF">Blue</option>
-                  <option value="#000000">Black</option>
-                  <option value="#FFFFFF">White</option>
-                </select>
-              </div>
-            </div>
           </div>
 
           <div className="settings-card">
@@ -320,29 +259,17 @@ export function SmartImport({ onSave, onCancel }: SmartImportProps) {
                     </button>
                   </div>
                 </div>
-                {previewFrames[status].length > 0 && (
-                  <div className="smart-import-frame-previews">
-                    {previewFrames[status].map((src, i) => (
-                      <img key={i} src={src} alt={`Frame ${i}`} className="smart-import-frame-thumb" />
-                    ))}
-                  </div>
-                )}
               </div>
             ))}
           </div>
 
-          {!allStatusesAssigned && (
-            <div className="smart-import-warning">
-              Assign at least one frame to each status
-            </div>
-          )}
-
+          {error && <div className="save-error">{error}</div>}
           <div className="custom-creator-actions">
             <button className="creator-btn cancel" onClick={onCancel}>Cancel</button>
             <button
               className="creator-btn save"
               onClick={handleSave}
-              disabled={!name.trim() || !allStatusesAssigned || processing}
+              disabled={processing}
             >
               {processing ? "Processing..." : "Save"}
             </button>
@@ -367,6 +294,18 @@ export function SmartImport({ onSave, onCancel }: SmartImportProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {animPreview && (
+        <AnimationPreview
+          spriteUrl={animPreview.url}
+          frames={animPreview.frames}
+          label={animPreview.label}
+          onClose={() => {
+            URL.revokeObjectURL(animPreview.url);
+            setAnimPreview(null);
+          }}
+        />
       )}
     </div>
   );

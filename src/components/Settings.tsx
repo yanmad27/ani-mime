@@ -12,6 +12,7 @@ import { mimeCategories, getMimesByCategory } from "../constants/sprites";
 import { useScale } from "../hooks/useScale";
 import { useCustomMimes, ALL_STATUSES } from "../hooks/useCustomMimes";
 import { SmartImport } from "./SmartImport";
+import { AnimationPreview } from "./AnimationPreview";
 import type { Status } from "../types/status";
 import { readFile } from "@tauri-apps/plugin-fs";
 import { appDataDir, join, resourceDir } from "@tauri-apps/api/path";
@@ -76,6 +77,7 @@ export function Settings() {
   const [tab, setTab] = useState<Tab>("general");
   const [creating, setCreating] = useState<false | "manual" | "smart">(false);
   const [editingMime, setEditingMime] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [spriteInputs, setSpriteInputs] = useState<
     Record<Status, { path: string; frames: string }>
@@ -85,11 +87,7 @@ export function Settings() {
     return init;
   });
   const [customPreviews, setCustomPreviews] = useState<Record<string, string>>({});
-  const [manualPreviews, setManualPreviews] = useState<Record<Status, string | null>>(() => {
-    const init: any = {};
-    for (const s of ALL_STATUSES) init[s] = null;
-    return init;
-  });
+  const [manualAnimPreview, setManualAnimPreview] = useState<{ url: string; frames: number; label: string } | null>(null);
   const [draftNickname, setDraftNickname] = useState(nickname);
   const nicknameChanged = draftNickname !== nickname;
 
@@ -158,9 +156,32 @@ export function Settings() {
 
   const handlePickFile = async (status: Status) => {
     const path = await pickSpriteFile();
-    if (path) {
-      setSpriteInputs((prev) => ({ ...prev, [status]: { ...prev[status], path } }));
+    if (!path) return;
+
+    // Auto-detect frame count from image dimensions (width / height for square-frame strips)
+    let detectedFrames = "1";
+    try {
+      const bytes = await readFile(path);
+      const blob = new Blob([bytes], { type: "image/png" });
+      const url = URL.createObjectURL(blob);
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = reject;
+        el.src = url;
+      });
+      URL.revokeObjectURL(url);
+      if (img.height > 0 && img.width >= img.height) {
+        detectedFrames = String(Math.round(img.width / img.height));
+      }
+    } catch {
+      // If detection fails, keep default "1"
     }
+
+    setSpriteInputs((prev) => ({
+      ...prev,
+      [status]: { path, frames: detectedFrames },
+    }));
   };
 
   const handleFrameChange = (status: Status, value: string) => {
@@ -171,21 +192,25 @@ export function Settings() {
     const filePath = spriteInputs[status].path;
     if (!filePath) return;
     try {
+      const frameCount = parseFrameSpec(spriteInputs[status].frames);
+      if (frameCount <= 0) return;
       const bytes = await readFile(filePath);
-      const blob = new Blob([bytes], { type: "image/png" });
-      const prev = manualPreviews[status];
-      if (prev) URL.revokeObjectURL(prev);
-      const url = URL.createObjectURL(blob);
-      setManualPreviews((p) => ({ ...p, [status]: url }));
+      if (manualAnimPreview?.url) URL.revokeObjectURL(manualAnimPreview.url);
+      const url = URL.createObjectURL(new Blob([bytes], { type: "image/png" }));
+      setManualAnimPreview({ url, frames: frameCount, label: status });
     } catch (err) {
       logError(`[settings] failed to preview ${status}: ${err instanceof Error ? err.message : err}`);
     }
   };
 
   const handleSaveCustom = async () => {
-    const allFilled = ALL_STATUSES.every((s) => spriteInputs[s].path && parseFrameSpec(spriteInputs[s].frames) > 0);
-    if (!newName.trim() || !allFilled) return;
+    if (!newName.trim()) { setSaveError("Name is required"); return; }
+    const missingSprite = ALL_STATUSES.find((s) => !spriteInputs[s].path);
+    if (missingSprite) { setSaveError(`Sprite for "${missingSprite}" is required`); return; }
+    const badFrames = ALL_STATUSES.find((s) => parseFrameSpec(spriteInputs[s].frames) <= 0);
+    if (badFrames) { setSaveError(`Invalid frame count for "${badFrames}"`); return; }
 
+    setSaveError(null);
     const spriteFiles: Record<Status, { sourcePath: string; frames: number }> = {} as any;
     for (const s of ALL_STATUSES) {
       spriteFiles[s] = { sourcePath: spriteInputs[s].path, frames: parseFrameSpec(spriteInputs[s].frames) };
@@ -216,11 +241,11 @@ export function Settings() {
 
   const handleSaveEdit = async () => {
     if (!editingMime) return;
-    const allValid = ALL_STATUSES.every(
-      (s) => (spriteInputs[s].path || editingMime) && parseFrameSpec(spriteInputs[s].frames) > 0
-    );
-    if (!newName.trim() || !allValid) return;
+    if (!newName.trim()) { setSaveError("Name is required"); return; }
+    const badFrames = ALL_STATUSES.find((s) => parseFrameSpec(spriteInputs[s].frames) <= 0);
+    if (badFrames) { setSaveError(`Invalid frame count for "${badFrames}"`); return; }
 
+    setSaveError(null);
     const spriteFiles: Record<Status, { sourcePath: string | null; frames: number }> = {} as any;
     for (const s of ALL_STATUSES) {
       spriteFiles[s] = {
@@ -245,15 +270,14 @@ export function Settings() {
   };
 
   const clearManualPreviews = () => {
-    Object.values(manualPreviews).forEach((url) => { if (url) URL.revokeObjectURL(url); });
-    const empty: any = {};
-    for (const s of ALL_STATUSES) empty[s] = null;
-    setManualPreviews(empty);
+    if (manualAnimPreview?.url) URL.revokeObjectURL(manualAnimPreview.url);
+    setManualAnimPreview(null);
   };
 
   const handleCancelCreate = () => {
     setCreating(false);
     setEditingMime(null);
+    setSaveError(null);
     setNewName("");
     clearManualPreviews();
     const init: any = {};
@@ -506,25 +530,10 @@ export function Settings() {
                             </button>
                           </div>
                         </div>
-                        {manualPreviews[s] && (
-                          <div className="manual-preview-strip">
-                            <div
-                              className="manual-preview-sprite"
-                              style={{
-                                backgroundImage: `url(${manualPreviews[s]})`,
-                                width: 48,
-                                height: 48,
-                                backgroundSize: `${parseFrameSpec(spriteInputs[s].frames) * 48}px 48px`,
-                                animationDuration: `${parseFrameSpec(spriteInputs[s].frames) * 80}ms`,
-                                // @ts-expect-error CSS custom property
-                                "--sprite-steps": parseFrameSpec(spriteInputs[s].frames),
-                              }}
-                            />
-                          </div>
-                        )}
                       </div>
                     ))}
                   </div>
+                  {saveError && <div className="save-error">{saveError}</div>}
                   <div className="custom-creator-actions">
                     <button className="creator-btn cancel" onClick={handleCancelCreate}>
                       Cancel
@@ -532,12 +541,6 @@ export function Settings() {
                     <button
                       className="creator-btn save"
                       onClick={editingMime ? handleSaveEdit : handleSaveCustom}
-                      disabled={
-                        !newName.trim() ||
-                        !ALL_STATUSES.every((s) =>
-                          (spriteInputs[s].path || editingMime) && parseFrameSpec(spriteInputs[s].frames) > 0
-                        )
-                      }
                     >
                       Save
                     </button>
@@ -667,6 +670,17 @@ export function Settings() {
               </div>
             </div>
           </div>
+        )}
+        {manualAnimPreview && (
+          <AnimationPreview
+            spriteUrl={manualAnimPreview.url}
+            frames={manualAnimPreview.frames}
+            label={manualAnimPreview.label}
+            onClose={() => {
+              URL.revokeObjectURL(manualAnimPreview.url);
+              setManualAnimPreview(null);
+            }}
+          />
         )}
       </main>
     </div>
