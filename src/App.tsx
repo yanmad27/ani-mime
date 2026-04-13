@@ -14,8 +14,9 @@ import { usePet } from "./hooks/usePet";
 import { useScale } from "./hooks/useScale";
 import { useDevMode } from "./hooks/useDevMode";
 import { useWindowAutoSize } from "./hooks/useWindowAutoSize";
-import { useRef } from "react";
+import { useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow, LogicalSize, LogicalPosition } from "@tauri-apps/api/window";
 import { Menu, MenuItem } from "@tauri-apps/api/menu";
 import "./styles/theme.css";
 import "./styles/app.css";
@@ -31,8 +32,50 @@ function App() {
   const { scale } = useScale();
   const devMode = useDevMode();
   const containerRef = useRef<HTMLDivElement>(null);
+  const [cloneActive, setCloneActive] = useState(false);
+  const savedWindowRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
   useTheme();
-  useWindowAutoSize(containerRef);
+  useWindowAutoSize(containerRef, cloneActive);
+
+  const handleCloneEffectChange = useCallback(async (active: boolean) => {
+    try {
+      const win = getCurrentWindow();
+
+      if (active) {
+        setCloneActive(true);
+
+        const factor = await win.scaleFactor();
+        const physPos = await win.outerPosition();
+        const physSize = await win.outerSize();
+
+        const logX = physPos.x / factor;
+        const logY = physPos.y / factor;
+        const logW = physSize.width / factor;
+        const logH = physSize.height / factor;
+
+        savedWindowRef.current = { x: logX, y: logY, w: logW, h: logH };
+
+        const expandedSize = 1200;
+        const shiftX = (expandedSize - logW) / 2;
+        const shiftY = (expandedSize - logH) / 2;
+
+        await win.setShadow(false);
+        await win.setPosition(new LogicalPosition(logX - shiftX, logY - shiftY));
+        await win.setSize(new LogicalSize(expandedSize, expandedSize));
+      } else {
+        if (savedWindowRef.current) {
+          const { x, y, w, h } = savedWindowRef.current;
+          await win.setPosition(new LogicalPosition(x, y));
+          await win.setSize(new LogicalSize(w, h));
+          await win.setShadow(true);
+          savedWindowRef.current = null;
+        }
+        setCloneActive(false);
+      }
+    } catch (err) {
+      console.error("[clone] error:", err);
+    }
+  }, []);
 
   const onContextMenu = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -78,13 +121,13 @@ function App() {
     <div
       ref={containerRef}
       data-testid="app-container"
-      className={`container ${dragging ? "dragging" : ""} ${scenario ? "scenario-active" : ""}`}
+      className={`container ${dragging ? "dragging" : ""} ${scenario ? "scenario-active" : ""} ${devMode ? "dev-border" : ""}`}
       onMouseDown={onMouseDown}
       onContextMenu={onContextMenu}
     >
       {scenario && <div data-testid="scenario-badge" className="scenario-badge">SCENARIO</div>}
       <SpeechBubble visible={visible} message={message} onDismiss={dismiss} />
-      {status !== "visiting" && <Mascot status={status} />}
+      {status !== "visiting" && <Mascot status={status} onCloneEffectChange={handleCloneEffectChange} />}
       {status === "visiting" && <div style={{ width: 128 * scale, height: 128 * scale }} />}
       <StatusPill status={status} glow={visible} />
       {devMode && <DevTag />}

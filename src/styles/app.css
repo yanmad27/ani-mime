@@ -57,3 +57,15 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
+
+/* Dev mode: show draggable container boundary */
+.container.dev-border {
+  border: 1px dashed rgba(94, 92, 230, 0.6);
+  border-radius: 2px;
+}
+
+/* Dev mode: show shadow clone area boundary */
+.container.dev-border .shadow-clone-container {
+  border: 1px dashed rgba(230, 92, 92, 0.6);
+  border-radius: 2px;
+}

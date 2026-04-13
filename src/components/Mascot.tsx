@@ -5,13 +5,18 @@ import { usePet } from "../hooks/usePet";
 import { useGlow } from "../hooks/useGlow";
 import { useScale } from "../hooks/useScale";
 import { useCustomMimes } from "../hooks/useCustomMimes";
+import { ShadowCloneEffect } from "./ShadowCloneEffect";
+import { useShadowClone } from "../hooks/useShadowClone";
 import { readFile } from "@tauri-apps/plugin-fs";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { error as logError } from "@tauri-apps/plugin-log";
 import "../styles/mascot.css";
 
+const CLONE_DURATION_MS = 2000;
+
 interface MascotProps {
   status: Status;
+  onCloneEffectChange?: (active: boolean) => void;
 }
 
 const FRAME_BASE_PX = 128;
@@ -34,19 +39,47 @@ function inferGrid(w: number, h: number, frames: number) {
   return { framePx: h, cols: Math.max(1, Math.round(w / Math.max(1, h))), rows: 1 };
 }
 
-export function Mascot({ status }: MascotProps) {
+export function Mascot({ status, onCloneEffectChange }: MascotProps) {
   const { pet } = usePet();
   const { mode: glowMode } = useGlow();
   const { scale } = useScale();
   const { mimes } = useCustomMimes();
+  const { enabled: shadowCloneEnabled } = useShadowClone();
   const [frozen, setFrozen] = useState(false);
   const [customSpriteUrl, setCustomSpriteUrl] = useState<string | null>(null);
   const [sheetDims, setSheetDims] = useState<{ w: number; h: number } | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const spriteRef = useRef<HTMLDivElement>(null);
 
+  // Shadow clone state
+  const [cloneActive, setCloneActive] = useState(false);
+  const prevStatusRef = useRef(status);
+  const cloneTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
   const isCustom = pet.startsWith("custom-");
   const customMime = isCustom ? mimes.find((m) => m.id === pet) : null;
+
+  // Detect transition to busy — trigger shadow clone effect
+  useEffect(() => {
+    const prevStatus = prevStatusRef.current;
+    prevStatusRef.current = status;
+
+    if (status === "busy" && prevStatus !== "busy" && shadowCloneEnabled) {
+      setCloneActive(true);
+      onCloneEffectChange?.(true);
+
+      cloneTimerRef.current = setTimeout(() => {
+        setCloneActive(false);
+        onCloneEffectChange?.(false);
+      }, CLONE_DURATION_MS);
+    } else if (status !== "busy" && cloneActive) {
+      clearTimeout(cloneTimerRef.current);
+      setCloneActive(false);
+      onCloneEffectChange?.(false);
+    }
+
+    return () => clearTimeout(cloneTimerRef.current);
+  }, [status]);
 
   useEffect(() => {
     clearTimeout(timerRef.current);
@@ -156,6 +189,19 @@ export function Mascot({ status }: MascotProps) {
     return () => cancelAnimationFrame(raf);
   }, [layout, frames, frameSize, frozen]);
 
+  // Resolve busy sprite for shadow clones (clones use the working sprite)
+  let busySpriteUrl = spriteUrl;
+  let busyFrames = frames;
+  if (cloneActive && !isCustom) {
+    const spriteMap = getSpriteMap(pet);
+    const busySprite = spriteMap["busy"];
+    busyFrames = busySprite.frames;
+    busySpriteUrl = new URL(
+      `../assets/sprites/${busySprite.file}`,
+      import.meta.url
+    ).href;
+  }
+
   if (isCustom && !customSpriteUrl) return null;
 
   // Display each source cell at frameSize (128 * scale). Background is scaled
@@ -164,16 +210,25 @@ export function Mascot({ status }: MascotProps) {
   const sheetHeight = layout ? layout.rows * frameSize : frameSize;
 
   return (
-    <div
-      ref={spriteRef}
-      data-testid="mascot-sprite"
-      className={`sprite ${frozen ? "frozen" : ""} ${glowMode !== "off" ? `glow-${glowMode}` : ""}`}
-      style={{
-        backgroundImage: `url(${spriteUrl})`,
-        width: frameSize,
-        height: frameSize,
-        backgroundSize: `${sheetWidth}px ${sheetHeight}px`,
-      }}
-    />
+    <div className="mascot-wrapper" data-testid="mascot-wrapper">
+      <div
+        ref={spriteRef}
+        data-testid="mascot-sprite"
+        className={`sprite ${frozen ? "frozen" : ""} ${glowMode !== "off" ? `glow-${glowMode}` : ""}`}
+        style={{
+          backgroundImage: `url(${spriteUrl})`,
+          width: frameSize,
+          height: frameSize,
+          backgroundSize: `${sheetWidth}px ${sheetHeight}px`,
+        }}
+      />
+      {cloneActive && busySpriteUrl && (
+        <ShadowCloneEffect
+          spriteUrl={busySpriteUrl}
+          frames={busyFrames}
+          frameSize={frameSize}
+        />
+      )}
+    </div>
   );
 }

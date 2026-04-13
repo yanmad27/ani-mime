@@ -1,7 +1,12 @@
+/* --- Mascot wrapper (positions clone effect) --- */
+.mascot-wrapper {
+  position: relative;
+  align-self: center;
+  margin-bottom: 4px;
+}
+
 /* --- Sprite (animation driven by JS rAF in Mascot.tsx) --- */
 .sprite {
-  margin-bottom: 4px;
-  align-self: center;
   image-rendering: pixelated;
   background-repeat: no-repeat;
   filter: none;

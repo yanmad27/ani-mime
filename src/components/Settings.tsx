@@ -12,6 +12,7 @@ import { useDockVisible } from "../hooks/useDockVisible";
 import { useTrayVisible } from "../hooks/useTrayVisible";
 import { mimeCategories, getMimesByCategory } from "../constants/sprites";
 import { useScale } from "../hooks/useScale";
+import { useShadowClone } from "../hooks/useShadowClone";
 import { useCustomMimes, ALL_STATUSES } from "../hooks/useCustomMimes";
 import { SmartImport } from "./SmartImport";
 import { AnimationPreview } from "./AnimationPreview";
@@ -78,6 +79,7 @@ export function Settings() {
   const { hidden: dockHidden, setHidden: setDockHidden } = useDockVisible();
   const { hidden: trayHidden, setHidden: setTrayHidden } = useTrayVisible();
   const { scale, setScale, SCALE_PRESETS } = useScale();
+  const { enabled: shadowCloneEnabled, setEnabled: setShadowCloneEnabled } = useShadowClone();
   const { mimes: customMimes, pickSpriteFile, addMime, addMimeFromBlobs, updateMime, deleteMime, exportMime, importMime } = useCustomMimes();
   const [tab, setTab] = useState<Tab>("general");
   const [creating, setCreating] = useState<false | "manual" | "smart">(false);
@@ -338,6 +340,16 @@ export function Settings() {
                     </button>
                   ))}
                 </div>
+              </div>
+              <div className="settings-row">
+                <span className="settings-row-label">Shadow Clone Effect</span>
+                <button
+                  data-testid="shadow-clone-toggle"
+                  className={`toggle-switch ${shadowCloneEnabled ? "active" : ""}`}
+                  onClick={() => setShadowCloneEnabled(!shadowCloneEnabled)}
+                >
+                  <span className="toggle-knob" />
+                </button>
               </div>
             </div>
           </div>
