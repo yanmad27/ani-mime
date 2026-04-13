@@ -9,6 +9,7 @@ import { useNickname } from "../hooks/useNickname";
 import { useAutoStart } from "../hooks/useAutoStart";
 import { useAutoUpdate } from "../hooks/useAutoUpdate";
 import { useDockVisible } from "../hooks/useDockVisible";
+import { useTrayVisible } from "../hooks/useTrayVisible";
 import { mimeCategories, getMimesByCategory } from "../constants/sprites";
 import { useScale } from "../hooks/useScale";
 import { useCustomMimes, ALL_STATUSES } from "../hooks/useCustomMimes";
@@ -75,6 +76,7 @@ export function Settings() {
   const { enabled: autoStartEnabled, setEnabled: setAutoStartEnabled } = useAutoStart();
   const { enabled: autoUpdateEnabled, setEnabled: setAutoUpdateEnabled } = useAutoUpdate();
   const { hidden: dockHidden, setHidden: setDockHidden } = useDockVisible();
+  const { hidden: trayHidden, setHidden: setTrayHidden } = useTrayVisible();
   const { scale, setScale, SCALE_PRESETS } = useScale();
   const { mimes: customMimes, pickSpriteFile, addMime, addMimeFromBlobs, updateMime, deleteMime, exportMime, importMime } = useCustomMimes();
   const [tab, setTab] = useState<Tab>("general");
@@ -381,6 +383,19 @@ export function Settings() {
                   className={`toggle-switch ${dockHidden ? "active" : ""}`}
                   onClick={() => setDockHidden(!dockHidden)}
                   data-testid="hide-dock-toggle"
+                >
+                  <span className="toggle-knob" />
+                </button>
+              </div>
+              <div className="settings-row with-hint">
+                <div>
+                  <span className="settings-row-label">Show in Menu Bar</span>
+                  <span className="settings-row-hint">Show the tray icon in the macOS menu bar for quick access.</span>
+                </div>
+                <button
+                  className={`toggle-switch ${!trayHidden ? "active" : ""}`}
+                  onClick={() => setTrayHidden(!trayHidden)}
+                  data-testid="show-tray-toggle"
                 >
                   <span className="toggle-knob" />
                 </button>
