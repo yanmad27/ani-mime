@@ -261,7 +261,7 @@ export function SmartImport({
   return (
     <div className="smart-import">
       {!canvas ? (
-        <div className="smart-import-pick">
+        <div className="smart-import-pick" data-testid="smart-import-pick">
           <div className="settings-card">
             <div className="smart-import-dropzone" onClick={handlePickSheet}>
               <div className="add-icon" style={{ fontSize: 32 }}>+</div>

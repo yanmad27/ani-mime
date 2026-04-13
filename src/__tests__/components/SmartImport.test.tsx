@@ -17,8 +17,8 @@ describe("SmartImport", () => {
     expect(screen.getByText(/Choose a sprite sheet/i)).toBeInTheDocument();
   });
 
-  it("pre-fills name from initialName prop", () => {
-    const { container } = render(
+  it("mounts the picker screen with edit-mode props", () => {
+    render(
       <SmartImport
         onSave={vi.fn()}
         onCancel={vi.fn()}
@@ -26,7 +26,6 @@ describe("SmartImport", () => {
         editingId="custom-abc"
       />
     );
-    // The picker is still visible (no canvas yet). Component renders without error.
-    expect(container.querySelector(".smart-import-pick")).toBeInTheDocument();
+    expect(screen.getByTestId("smart-import-pick")).toBeInTheDocument();
   });
 });
