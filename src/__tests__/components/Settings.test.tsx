@@ -36,14 +36,20 @@ vi.mock("../../hooks/useScale", () => ({
   }),
 }));
 
+const { mockMimes } = vi.hoisted(() => ({ mockMimes: { current: [] as any[] } }));
+
 vi.mock("../../hooks/useCustomMimes", () => ({
   useCustomMimes: () => ({
-    mimes: [],
+    mimes: mockMimes.current,
     loaded: true,
     pickSpriteFile: vi.fn(),
     addMime: vi.fn(),
     addMimeFromBlobs: vi.fn(),
+    updateMime: vi.fn(),
+    updateMimeFromSmartImport: vi.fn(),
     deleteMime: vi.fn(),
+    exportMime: vi.fn(),
+    importMime: vi.fn(),
     getSpriteUrl: vi.fn(),
   }),
   ALL_STATUSES: [
@@ -71,6 +77,10 @@ function clickTab(container: HTMLElement, name: string) {
 }
 
 describe("Settings", () => {
+  beforeEach(() => {
+    mockMimes.current = [];
+  });
+
   it("renders sidebar with tabs", async () => {
     const { container } = render(<Settings />);
 
@@ -221,5 +231,89 @@ describe("Settings", () => {
       expect(screen.getByText("vietnguyenhoangw")).toBeInTheDocument();
       expect(screen.getByText("@vietnguyenw")).toBeInTheDocument();
     });
+  });
+
+  const ALL_STATUSES_CONST = ["idle", "busy", "service", "disconnected", "searching", "initializing", "visiting"] as const;
+
+  function buildSprites(id: string) {
+    return Object.fromEntries(
+      ALL_STATUSES_CONST.map((s) => [s, { fileName: `${id}-${s}.png`, frames: 3 }])
+    );
+  }
+
+  it("editing a smart-import mime opens the Smart Import editor", async () => {
+    mockMimes.current = [{
+      id: "custom-smart-1",
+      name: "Smarty",
+      sprites: buildSprites("custom-smart-1"),
+      smartImportMeta: {
+        sheetFileName: "custom-smart-1-source.png",
+        frameInputs: Object.fromEntries(ALL_STATUSES_CONST.map((s) => [s, "1-3"])),
+      },
+    }];
+
+    const { container } = render(<Settings />);
+    await waitFor(() => {
+      expect(container.querySelector(".settings-sidebar")).toBeInTheDocument();
+    });
+    clickTab(container, "Mime");
+
+    const editBtn = await screen.findByTestId("edit-mime-custom-smart-1");
+    fireEvent.click(editBtn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("smart-import")).toBeInTheDocument();
+    });
+    // Manual editor's "Choose PNG" hallmark must NOT be present
+    expect(screen.queryByText(/Choose PNG/)).not.toBeInTheDocument();
+  });
+
+  it("editing a manual (no meta) mime opens the Manual editor", async () => {
+    mockMimes.current = [{
+      id: "custom-manual-1",
+      name: "Manny",
+      sprites: buildSprites("custom-manual-1"),
+      // no smartImportMeta
+    }];
+
+    const { container } = render(<Settings />);
+    await waitFor(() => {
+      expect(container.querySelector(".settings-sidebar")).toBeInTheDocument();
+    });
+    clickTab(container, "Mime");
+
+    const editBtn = await screen.findByTestId("edit-mime-custom-manual-1");
+    fireEvent.click(editBtn);
+
+    await waitFor(() => {
+      // Manual editor is inline; "Choose PNG" is on each status's file picker button
+      expect(screen.queryAllByText(/Choose PNG|[a-z0-9-]+\.png/i).length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByTestId("smart-import")).not.toBeInTheDocument();
+  });
+
+  it("editing a LEGACY pre-feature mime (no smartImportMeta key at all) opens the Manual editor", async () => {
+    // Distinct from manual-created: the legacy JSON shape has NO smartImportMeta key.
+    // This guards against an accidental `'smartImportMeta' in mime` check that would split their behavior.
+    const legacy = {
+      id: "custom-legacy-1",
+      name: "FromOldBuild",
+      sprites: buildSprites("custom-legacy-1"),
+    };
+    mockMimes.current = [legacy];
+
+    const { container } = render(<Settings />);
+    await waitFor(() => {
+      expect(container.querySelector(".settings-sidebar")).toBeInTheDocument();
+    });
+    clickTab(container, "Mime");
+
+    const editBtn = await screen.findByTestId("edit-mime-custom-legacy-1");
+    fireEvent.click(editBtn);
+
+    await waitFor(() => {
+      expect(screen.queryAllByText(/Choose PNG|[a-z0-9-]+\.png/i).length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByTestId("smart-import")).not.toBeInTheDocument();
   });
 });

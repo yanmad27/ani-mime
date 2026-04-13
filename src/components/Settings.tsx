@@ -78,7 +78,7 @@ export function Settings() {
   const { hidden: dockHidden, setHidden: setDockHidden } = useDockVisible();
   const { hidden: trayHidden, setHidden: setTrayHidden } = useTrayVisible();
   const { scale, setScale, SCALE_PRESETS } = useScale();
-  const { mimes: customMimes, pickSpriteFile, addMime, addMimeFromBlobs, updateMime, deleteMime, exportMime, importMime } = useCustomMimes();
+  const { mimes: customMimes, pickSpriteFile, addMime, addMimeFromBlobs, updateMime, updateMimeFromSmartImport, deleteMime, exportMime, importMime } = useCustomMimes();
   const [tab, setTab] = useState<Tab>("general");
   const [creating, setCreating] = useState<false | "manual" | "smart">(false);
   const [smartImportPath, setSmartImportPath] = useState<string | null>(null);
@@ -232,10 +232,20 @@ export function Settings() {
     setSpriteInputs(init);
   };
 
-  const handleEditCustom = (id: string) => {
+  const handleEditCustom = async (id: string) => {
     const mime = customMimes.find((m) => m.id === id);
     if (!mime) return;
     setEditingMime(id);
+
+    if (mime.smartImportMeta) {
+      const base = await appDataDir();
+      const path = await join(base, "custom-sprites", mime.smartImportMeta.sheetFileName);
+      setSmartImportPath(path);
+      setCreating("smart");
+      setNewName(mime.name);
+      return;
+    }
+
     setCreating("manual");
     setNewName(mime.name);
     const filled: any = {};
@@ -581,9 +591,27 @@ export function Settings() {
               ) : creating === "smart" ? (
                 <SmartImport
                   initialFilePath={smartImportPath ?? undefined}
+                  initialName={editingMime ? customMimes.find((m) => m.id === editingMime)?.name : undefined}
+                  initialFrameInputs={
+                    editingMime
+                      ? customMimes.find((m) => m.id === editingMime)?.smartImportMeta?.frameInputs
+                      : undefined
+                  }
+                  editingId={editingMime ?? undefined}
                   onSave={async (mimeName, blobs, meta) => {
-                    const id = await addMimeFromBlobs(mimeName, blobs, meta);
-                    setPet(id);
+                    if (editingMime) {
+                      await updateMimeFromSmartImport(
+                        editingMime,
+                        mimeName,
+                        blobs,
+                        meta.sheetBlob,
+                        meta.frameInputs
+                      );
+                      setEditingMime(null);
+                    } else {
+                      const id = await addMimeFromBlobs(mimeName, blobs, meta);
+                      setPet(id);
+                    }
                     setCreating(false);
                     setSmartImportPath(null);
                   }}
