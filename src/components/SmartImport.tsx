@@ -240,7 +240,7 @@ export function SmartImport({
       const sheetBlob: Uint8Array = await new Promise((resolve, reject) => {
         canvas.toBlob((b) => {
           if (!b) return reject(new Error("Failed to encode source sheet"));
-          b.arrayBuffer().then((buf) => resolve(new Uint8Array(buf)));
+          b.arrayBuffer().then((buf) => resolve(new Uint8Array(buf)), reject);
         }, "image/png");
       });
 
