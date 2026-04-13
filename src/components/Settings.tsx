@@ -581,8 +581,8 @@ export function Settings() {
               ) : creating === "smart" ? (
                 <SmartImport
                   initialFilePath={smartImportPath ?? undefined}
-                  onSave={async (mimeName, blobs) => {
-                    const id = await addMimeFromBlobs(mimeName, blobs);
+                  onSave={async (mimeName, blobs, meta) => {
+                    const id = await addMimeFromBlobs(mimeName, blobs, meta);
                     setPet(id);
                     setCreating(false);
                     setSmartImportPath(null);
