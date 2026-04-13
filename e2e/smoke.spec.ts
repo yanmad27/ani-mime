@@ -494,6 +494,183 @@ test('SmartImport Charlotte with auto-fill name and frame selection', async ({ p
 });
 
 // ---------------------------------------------------------------------------
+// 13b. SmartImport create → edit → re-save round trip
+// ---------------------------------------------------------------------------
+test('smart-import mime can be edited via Smart Import and keeps its meta', async ({ page }) => {
+  await loadWithMock(page, '/settings.html');
+
+  // Load Charlotte fixture bytes
+  const charlottePath = path.resolve(__e2eDir, '../src/__tests__/fixtures/sprites/charlotte/input.png');
+  const charlotteBytes = readFileSync(charlottePath);
+  const b64 = charlotteBytes.toString('base64');
+
+  await page.evaluate((data: string) => {
+    const binary = atob(data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    (window as any).__MOCK_READ_FILE_BYTES__ = bytes;
+    (window as any).__MOCK_DIALOG_RESULT__ = '/mock/sprites/Charlotte.png';
+  }, b64);
+
+  // --- Step A: create a smart-import mime ---------------------------------
+  await page.click('.sidebar-item:nth-child(2)');
+  await expect(page.locator('.settings-title')).toHaveText('Mime');
+  await page.click('.pet-card.add-card:has-text("Import Sheet")');
+
+  const frameAssign = page.locator('.smart-import-frame-assign');
+  await expect(frameAssign.first()).toBeVisible();
+  await expect(frameAssign).toHaveCount(7);
+
+  // Rename the mime
+  const nameInput = page.locator('.smart-import .settings-input');
+  await nameInput.fill('RoundTrip');
+
+  // Accept auto-distributed frame ranges; save immediately
+  const saveBtn = page.locator('.creator-btn.save');
+  await expect(saveBtn).toBeEnabled();
+  await saveBtn.click();
+  await expect(page.locator('.smart-import')).not.toBeVisible();
+
+  // --- Step B: verify source sheet was written + meta persisted ------------
+  const wroteSource = await page.evaluate(() => {
+    const files = (window as any).__MOCK_WRITTEN_FILES__ || [];
+    return files.some((f: any) => /-source\.png$/.test(f.path ?? ''));
+  });
+  expect(wroteSource).toBe(true);
+
+  const storedMimes = await page.evaluate(async () => {
+    const rid = await (window as any).__TAURI_INTERNALS__.invoke(
+      'plugin:store|load', { path: 'settings.json' }
+    );
+    const val = await (window as any).__TAURI_INTERNALS__.invoke(
+      'plugin:store|get', { rid, key: 'customMimes' }
+    );
+    return val ? val[0] : null;
+  });
+  expect(storedMimes).toHaveLength(1);
+  expect(storedMimes[0].name).toBe('RoundTrip');
+  expect(storedMimes[0].smartImportMeta).toBeDefined();
+  expect(storedMimes[0].smartImportMeta.sheetFileName).toMatch(/^custom-\d+-source\.png$/);
+  expect(storedMimes[0].smartImportMeta.frameInputs).toBeDefined();
+  const originalFrameInputs = storedMimes[0].smartImportMeta.frameInputs;
+  const mimeId = storedMimes[0].id;
+
+  // --- Step C: click edit → Smart Import should re-open --------------------
+  // Point the FS mock at the same Charlotte bytes for source sheet re-read
+  await page.evaluate((data: string) => {
+    const binary = atob(data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    (window as any).__MOCK_READ_FILE_BYTES__ = bytes;
+    // Clear the written files log to isolate update writes
+    (window as any).__MOCK_WRITTEN_FILES__ = [];
+  }, b64);
+
+  // Hover to reveal edit button (hidden by default, shown on hover)
+  const roundTripWrapper = page.locator('.pet-card-wrapper', {
+    has: page.locator('.pet-name', { hasText: 'RoundTrip' }),
+  });
+  await roundTripWrapper.hover();
+  await page.click(`[data-testid="edit-mime-${mimeId}"]`);
+
+  // Smart Import editor opens (not Manual)
+  await expect(page.locator('.smart-import-frame-assign').first()).toBeVisible();
+  await expect(page.locator('.smart-import-frame-assign')).toHaveCount(7);
+  await expect(page.locator('.manual-status-row')).toHaveCount(0);
+
+  // Name is pre-filled with the saved name
+  await expect(page.locator('.smart-import .settings-input')).toHaveValue('RoundTrip');
+
+  // Frame inputs should be pre-filled with the saved values before the user edits them
+  const frameInputs = page.locator('.smart-import-frame-input');
+  await expect(frameInputs.nth(0)).toHaveValue(originalFrameInputs.idle);
+
+  // --- Step D: change the first status's frame range (idle) and save -------
+  const idleInput = frameInputs.nth(0); // statusOrder[0] = idle
+  await idleInput.clear();
+  await idleInput.fill('3-4');
+  await idleInput.blur();
+
+  const editSaveBtn = page.locator('.creator-btn.save');
+  await expect(editSaveBtn).toBeEnabled();
+  await editSaveBtn.click();
+  await expect(page.locator('.smart-import')).not.toBeVisible();
+
+  // --- Step E: verify the store's meta reflects the edit -------------------
+  const updatedMimes = await page.evaluate(async () => {
+    const rid = await (window as any).__TAURI_INTERNALS__.invoke(
+      'plugin:store|load', { path: 'settings.json' }
+    );
+    const val = await (window as any).__TAURI_INTERNALS__.invoke(
+      'plugin:store|get', { rid, key: 'customMimes' }
+    );
+    return val ? val[0] : null;
+  });
+  expect(updatedMimes).toHaveLength(1);
+  expect(updatedMimes[0].id).toBe(mimeId); // same id, in-place update
+  expect(updatedMimes[0].name).toBe('RoundTrip');
+  expect(updatedMimes[0].smartImportMeta).toBeDefined();
+  expect(updatedMimes[0].smartImportMeta.frameInputs.idle).toBe('3-4');
+
+  // Other statuses should be preserved from original
+  for (const status of ['busy', 'service', 'disconnected', 'searching', 'initializing', 'visiting']) {
+    expect(updatedMimes[0].smartImportMeta.frameInputs[status]).toBe(originalFrameInputs[status]);
+  }
+
+  // --- Step F: verify the update wrote the source sheet again --------------
+  const reWroteSource = await page.evaluate((id: string) => {
+    const files = (window as any).__MOCK_WRITTEN_FILES__ || [];
+    return files.some((f: any) => new RegExp(`${id}-source\\.png$`).test(f.path ?? ''));
+  }, mimeId);
+  expect(reWroteSource).toBe(true);
+});
+
+// ---------------------------------------------------------------------------
+// 13c. Imported .animime mime (no smart meta) opens Manual editor on edit
+// ---------------------------------------------------------------------------
+test('imported .animime mime (no smart meta) opens Manual editor on edit', async ({ page }) => {
+  await loadWithMock(page, '/settings.html');
+
+  // Navigate to Mime tab first
+  await page.click('.sidebar-item:nth-child(2)');
+  await expect(page.locator('.settings-title')).toHaveText('Mime');
+
+  // Inject a manual-style mime (no smartImportMeta) via event
+  await page.evaluate(() => {
+    const mimes = [{
+      id: 'custom-imported-1',
+      name: 'FromAnimime',
+      sprites: {
+        idle:          { fileName: 'custom-imported-1-idle.png',          frames: 3 },
+        busy:          { fileName: 'custom-imported-1-busy.png',          frames: 3 },
+        service:       { fileName: 'custom-imported-1-service.png',       frames: 3 },
+        disconnected:  { fileName: 'custom-imported-1-disconnected.png',  frames: 3 },
+        searching:     { fileName: 'custom-imported-1-searching.png',     frames: 3 },
+        initializing:  { fileName: 'custom-imported-1-initializing.png',  frames: 3 },
+        visiting:      { fileName: 'custom-imported-1-visiting.png',      frames: 3 },
+      },
+    }];
+    (window as any).__TEST_SEED_STORE__('settings.json', 'customMimes', mimes);
+    (window as any).__TEST_EMIT__('custom-mimes-changed', mimes);
+  });
+
+  // The mime should appear
+  await expect(page.locator('.pet-card-wrapper .pet-name', { hasText: 'FromAnimime' })).toBeVisible();
+
+  // Hover to reveal edit button, then click it
+  const fromAnimimeWrapper = page.locator('.pet-card-wrapper', {
+    has: page.locator('.pet-name', { hasText: 'FromAnimime' }),
+  });
+  await fromAnimimeWrapper.hover();
+  await page.click('[data-testid="edit-mime-custom-imported-1"]');
+
+  // Manual editor is visible (not Smart Import)
+  await expect(page.locator('.manual-status-row').first()).toBeVisible();
+  await expect(page.locator('.manual-status-row')).toHaveCount(7);
+  await expect(page.locator('.smart-import-frame-assign')).toHaveCount(0);
+});
+
+// ---------------------------------------------------------------------------
 // 14. Export Charlotte as .animime file
 // ---------------------------------------------------------------------------
 test('export Charlotte mime as .animime file', async ({ page }) => {

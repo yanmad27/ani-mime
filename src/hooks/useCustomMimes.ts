@@ -110,10 +110,11 @@ export function useCustomMimes() {
 
   const addMimeFromBlobs = useCallback(async (
     name: string,
-    spriteBlobs: Record<Status, { blob: Uint8Array; frames: number }>
+    spriteBlobs: Record<Status, { blob: Uint8Array; frames: number }>,
+    smartImportMeta?: { sheetBlob: Uint8Array; frameInputs: Record<Status, string> }
   ) => {
     const id = `custom-${Date.now()}`;
-    info(`[custom-mimes] addMimeFromBlobs: name="${name}", id=${id}`);
+    info(`[custom-mimes] addMimeFromBlobs: name="${name}", id=${id}, hasSmartMeta=${!!smartImportMeta}`);
     const dir = await ensureSpritesDir();
 
     const sprites: Record<string, { fileName: string; frames: number }> = {};
@@ -126,10 +127,19 @@ export function useCustomMimes() {
       sprites[status] = { fileName, frames };
     }
 
+    let metaRecord: CustomMimeData["smartImportMeta"];
+    if (smartImportMeta) {
+      const sheetFileName = `${id}-source.png`;
+      info(`[custom-mimes] writing ${sheetFileName} (${smartImportMeta.sheetBlob.length} bytes)`);
+      await writeFile(`${dir}/${sheetFileName}`, smartImportMeta.sheetBlob);
+      metaRecord = { sheetFileName, frameInputs: smartImportMeta.frameInputs };
+    }
+
     const newMime: CustomMimeData = {
       id,
       name,
       sprites: sprites as Record<Status, { fileName: string; frames: number }>,
+      ...(metaRecord ? { smartImportMeta: metaRecord } : {}),
     };
 
     await saveMimes([...mimes, newMime]);
@@ -166,6 +176,46 @@ export function useCustomMimes() {
         id,
         name,
         sprites: sprites as Record<Status, { fileName: string; frames: number }>,
+        // Preserve smartImportMeta if present so the Manual editor path doesn't
+        // silently drop it (and orphan the source sheet) for a smart-import mime.
+        ...(existing.smartImportMeta ? { smartImportMeta: existing.smartImportMeta } : {}),
+      };
+
+      await saveMimes(mimes.map((m) => (m.id === id ? updated : m)));
+    },
+    [mimes, saveMimes, ensureSpritesDir]
+  );
+
+  const updateMimeFromSmartImport = useCallback(
+    async (
+      id: string,
+      name: string,
+      spriteBlobs: Record<Status, { blob: Uint8Array; frames: number }>,
+      sheetBlob: Uint8Array,
+      frameInputs: Record<Status, string>
+    ) => {
+      const existing = mimes.find((m) => m.id === id);
+      if (!existing) return;
+
+      info(`[custom-mimes] updateMimeFromSmartImport: id=${id}, name="${name}"`);
+      const dir = await ensureSpritesDir();
+
+      const sprites: Record<string, { fileName: string; frames: number }> = {};
+      for (const status of ALL_STATUSES) {
+        const { blob, frames } = spriteBlobs[status];
+        const fileName = `${id}-${status}.png`;
+        await writeFile(`${dir}/${fileName}`, blob);
+        sprites[status] = { fileName, frames };
+      }
+
+      const sheetFileName = `${id}-source.png`;
+      await writeFile(`${dir}/${sheetFileName}`, sheetBlob);
+
+      const updated: CustomMimeData = {
+        id,
+        name,
+        sprites: sprites as Record<Status, { fileName: string; frames: number }>,
+        smartImportMeta: { sheetFileName, frameInputs },
       };
 
       await saveMimes(mimes.map((m) => (m.id === id ? updated : m)));
@@ -188,6 +238,13 @@ export function useCustomMimes() {
           } catch {
             /* ok if missing */
           }
+        }
+      }
+      if (mime.smartImportMeta?.sheetFileName) {
+        try {
+          await remove(`${dir}/${mime.smartImportMeta.sheetFileName}`);
+        } catch {
+          /* ok if missing */
         }
       }
 
@@ -281,5 +338,5 @@ export function useCustomMimes() {
     []
   );
 
-  return { mimes, loaded, pickSpriteFile, addMime, addMimeFromBlobs, updateMime, deleteMime, exportMime, importMime, getSpriteUrl };
+  return { mimes, loaded, pickSpriteFile, addMime, addMimeFromBlobs, updateMime, updateMimeFromSmartImport, deleteMime, exportMime, importMime, getSpriteUrl };
 }

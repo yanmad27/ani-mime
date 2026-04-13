@@ -16,9 +16,19 @@ import { ALL_STATUSES } from "../hooks/useCustomMimes";
 import { AnimationPreview } from "./AnimationPreview";
 
 interface SmartImportProps {
-  onSave: (name: string, blobs: Record<Status, { blob: Uint8Array; frames: number }>) => Promise<void>;
+  onSave: (
+    name: string,
+    blobs: Record<Status, { blob: Uint8Array; frames: number }>,
+    meta: {
+      sheetBlob: Uint8Array;
+      frameInputs: Record<Status, string>;
+    }
+  ) => Promise<void>;
   onCancel: () => void;
   initialFilePath?: string;
+  initialName?: string;
+  initialFrameInputs?: Record<Status, string>;
+  editingId?: string;
 }
 
 const STATUS_LABELS: Record<Status, string> = {
@@ -66,7 +76,14 @@ function parseFrameInput(input: string, maxFrame: number): number[] {
   return [...indices].sort((a, b) => a - b);
 }
 
-export function SmartImport({ onSave, onCancel, initialFilePath }: SmartImportProps) {
+export function SmartImport({
+  onSave,
+  onCancel,
+  initialFilePath,
+  initialName,
+  initialFrameInputs,
+  editingId: _editingId,
+}: SmartImportProps) {
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
   const [frameInputs, setFrameInputs] = useState<Record<Status, string>>(() => {
@@ -74,7 +91,7 @@ export function SmartImport({ onSave, onCancel, initialFilePath }: SmartImportPr
     for (const s of ALL_STATUSES) init[s] = "";
     return init;
   });
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initialName ?? "");
   const [processing, setProcessing] = useState(false);
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -92,7 +109,9 @@ export function SmartImport({ onSave, onCancel, initialFilePath }: SmartImportPr
     try {
       const rawName = filePath.split("/").pop() ?? "";
       setFileName(rawName);
-      setName(rawName.replace(/\.[^.]+$/, ""));
+      if (!initialName) {
+        setName(rawName.replace(/\.[^.]+$/, ""));
+      }
       const bytes = await readFile(filePath);
       const ext = filePath.split(".").pop()?.toLowerCase() ?? "png";
       const mime = ext === "gif" ? "image/gif" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
@@ -112,19 +131,23 @@ export function SmartImport({ onSave, onCancel, initialFilePath }: SmartImportPr
       const allFrames = extractFrames(detected);
       setFrames(allFrames);
 
-      // Auto-assign: distribute frames evenly across statuses
-      const perStatus = Math.max(1, Math.floor(allFrames.length / ALL_STATUSES.length));
+      // Auto-assign: distribute frames evenly across statuses (skipped in edit mode)
       const autoInputs: Record<string, string> = {};
-      for (let si = 0; si < ALL_STATUSES.length; si++) {
-        const start = si * perStatus + 1;
-        const end = si === ALL_STATUSES.length - 1
-          ? allFrames.length
-          : Math.min((si + 1) * perStatus, allFrames.length);
-        autoInputs[ALL_STATUSES[si]] = `${start}-${end}`;
+      if (initialFrameInputs) {
+        for (const s of ALL_STATUSES) autoInputs[s] = initialFrameInputs[s] ?? "";
+      } else {
+        const perStatus = Math.max(1, Math.floor(allFrames.length / ALL_STATUSES.length));
+        for (let si = 0; si < ALL_STATUSES.length; si++) {
+          const start = si * perStatus + 1;
+          const end = si === ALL_STATUSES.length - 1
+            ? allFrames.length
+            : Math.min((si + 1) * perStatus, allFrames.length);
+          autoInputs[ALL_STATUSES[si]] = `${start}-${end}`;
+        }
       }
       setFrameInputs(autoInputs as Record<Status, string>);
 
-      // Generate initial thumbnails for auto-assigned frames
+      // Generate initial thumbnails
       const initThumbs: Record<string, { src: string; num: number }[]> = {};
       for (const s of ALL_STATUSES) {
         const indices = parseFrameInput(autoInputs[s], allFrames.length);
@@ -171,7 +194,7 @@ export function SmartImport({ onSave, onCancel, initialFilePath }: SmartImportPr
     if (indices.length === 0) return;
 
     const strip = await createStripFromFrames(canvas, frames, indices);
-    const blob = new Blob([strip.blob], { type: "image/png" });
+    const blob = new Blob([strip.blob as BlobPart], { type: "image/png" });
     const url = URL.createObjectURL(blob);
     if (animPreview?.url) URL.revokeObjectURL(animPreview.url);
     setAnimPreview({ url, frames: strip.frames, label: STATUS_LABELS[status] });
@@ -214,7 +237,18 @@ export function SmartImport({ onSave, onCancel, initialFilePath }: SmartImportPr
         blobs[status] = strip;
       }
 
-      await onSave(name.trim(), blobs as Record<Status, { blob: Uint8Array; frames: number }>);
+      const sheetBlob: Uint8Array = await new Promise((resolve, reject) => {
+        canvas.toBlob((b) => {
+          if (!b) return reject(new Error("Failed to encode source sheet"));
+          b.arrayBuffer().then((buf) => resolve(new Uint8Array(buf)), reject);
+        }, "image/png");
+      });
+
+      await onSave(
+        name.trim(),
+        blobs as Record<Status, { blob: Uint8Array; frames: number }>,
+        { sheetBlob, frameInputs }
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to save mime";
       logError(`[smart-import] handleSave failed: ${msg}`);
@@ -227,7 +261,7 @@ export function SmartImport({ onSave, onCancel, initialFilePath }: SmartImportPr
   return (
     <div className="smart-import">
       {!canvas ? (
-        <div className="smart-import-pick">
+        <div className="smart-import-pick" data-testid="smart-import-pick">
           <div className="settings-card">
             <div className="smart-import-dropzone" onClick={handlePickSheet}>
               <div className="add-icon" style={{ fontSize: 32 }}>+</div>
