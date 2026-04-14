@@ -51,9 +51,9 @@ const STATUS_DESCRIPTIONS: Record<Status, string> = {
   visiting: "A friend's mime is visiting from the local network",
 };
 
-/** Parse "1-5" or "1,2,3,5,6" into 0-based indices. Returns sorted unique indices. */
+/** Parse "1-5" or "1,2,3,5,6" into 0-based indices. Preserves order and duplicates. Ranges are directional: 3-1 → 3,2,1. */
 function parseFrameInput(input: string, maxFrame: number): number[] {
-  const indices = new Set<number>();
+  const indices: number[] = [];
   for (const part of input.split(",")) {
     const trimmed = part.trim();
     if (!trimmed) continue;
@@ -62,18 +62,21 @@ function parseFrameInput(input: string, maxFrame: number): number[] {
       const start = parseInt(range[0]);
       const end = parseInt(range[1]);
       if (!isNaN(start) && !isNaN(end)) {
-        for (let i = Math.max(1, start); i <= Math.min(maxFrame, end); i++) {
-          indices.add(i - 1); // convert to 0-based
+        const step = start <= end ? 1 : -1;
+        for (let i = start; step === 1 ? i <= end : i >= end; i += step) {
+          if (i >= 1 && i <= maxFrame) {
+            indices.push(i - 1);
+          }
         }
       }
     } else {
       const n = parseInt(trimmed);
       if (!isNaN(n) && n >= 1 && n <= maxFrame) {
-        indices.add(n - 1);
+        indices.push(n - 1);
       }
     }
   }
-  return [...indices].sort((a, b) => a - b);
+  return indices;
 }
 
 export function SmartImport({
