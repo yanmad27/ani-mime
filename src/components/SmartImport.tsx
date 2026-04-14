@@ -6,6 +6,7 @@ import type { Status } from "../types/status";
 import {
   loadImage,
   prepareCanvas,
+  removeSmallComponents,
   detectRows,
   extractFrames,
   getFramePreview,
@@ -100,6 +101,7 @@ export function SmartImport({
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [allFramePreviews, setAllFramePreviews] = useState<string[]>([]);
+  const [rawBytes, setRawBytes] = useState<Uint8Array | null>(null);
   const [animPreview, setAnimPreview] = useState<{ url: string; frames: number; label: string } | null>(null);
   const [frameThumbs, setFrameThumbs] = useState<Record<Status, { src: string; num: number }[]>>(() => {
     const init: Record<string, { src: string; num: number }[]> = {};
@@ -116,6 +118,7 @@ export function SmartImport({
         setName(rawName.replace(/\.[^.]+$/, ""));
       }
       const bytes = await readFile(filePath);
+      setRawBytes(new Uint8Array(bytes));
       const ext = filePath.split(".").pop()?.toLowerCase() ?? "png";
       const mime = ext === "gif" ? "image/gif" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
       const blob = new Blob([bytes], { type: mime });
@@ -123,17 +126,8 @@ export function SmartImport({
       const img = await loadImage(src);
       URL.revokeObjectURL(src);
 
-      let prepared: HTMLCanvasElement;
-      if (initialFrameInputs) {
-        // Edit mode: source sheet is already background-removed — skip prepareCanvas
-        // to avoid degrading quality on each edit cycle.
-        prepared = document.createElement("canvas");
-        prepared.width = img.width;
-        prepared.height = img.height;
-        prepared.getContext("2d")!.drawImage(img, 0, 0);
-      } else {
-        prepared = prepareCanvas(img).canvas;
-      }
+      const prepared = prepareCanvas(img).canvas;
+      removeSmallComponents(prepared);
       setCanvas(prepared);
 
       const detected = detectRows(prepared);
@@ -251,12 +245,8 @@ export function SmartImport({
         blobs[status] = strip;
       }
 
-      const sheetBlob: Uint8Array = await new Promise((resolve, reject) => {
-        canvas.toBlob((b) => {
-          if (!b) return reject(new Error("Failed to encode source sheet"));
-          b.arrayBuffer().then((buf) => resolve(new Uint8Array(buf)), reject);
-        }, "image/png");
-      });
+      if (!rawBytes) throw new Error("No source sheet data available");
+      const sheetBlob = rawBytes;
 
       await onSave(
         name.trim(),

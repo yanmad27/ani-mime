@@ -385,6 +385,90 @@ export async function createStrip(
   return { blob, frames: sprites.length };
 }
 
+/** Remove small isolated pixel groups (e.g. text labels) via connected component analysis.
+ *  Components whose bounding-box height is less than 25 % of the tallest component
+ *  are treated as text / noise and erased. */
+export function removeSmallComponents(canvas: HTMLCanvasElement): void {
+  const ctx = canvas.getContext("2d")!;
+  const { width, height } = canvas;
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  const total = width * height;
+
+  const labels = new Int32Array(total);
+  let nextLabel = 1;
+
+  // Per-label bounding-box height (index 0 unused)
+  const compMinY: number[] = [0];
+  const compMaxY: number[] = [0];
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      if (labels[idx] !== 0 || data[idx * 4 + 3] <= ALPHA_THRESHOLD) continue;
+
+      const label = nextLabel++;
+      let minY = y, maxY = y;
+      const stack: number[] = [idx];
+      labels[idx] = label;
+
+      while (stack.length > 0) {
+        const ci = stack.pop()!;
+        const cx = ci % width;
+        const cy = (ci - cx) / width;
+        if (cy < minY) minY = cy;
+        if (cy > maxY) maxY = cy;
+
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = cx + dx;
+            const ny = cy + dy;
+            if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+            const ni = ny * width + nx;
+            if (labels[ni] !== 0 || data[ni * 4 + 3] <= ALPHA_THRESHOLD) continue;
+            labels[ni] = label;
+            stack.push(ni);
+          }
+        }
+      }
+
+      compMinY.push(minY);
+      compMaxY.push(maxY);
+    }
+  }
+
+  if (nextLabel <= 1) return;
+
+  let maxH = 0;
+  for (let i = 1; i < nextLabel; i++) {
+    const h = compMaxY[i] - compMinY[i] + 1;
+    if (h > maxH) maxH = h;
+  }
+
+  const heightThreshold = maxH * 0.25;
+
+  // Build a fast lookup instead of Set.has() in the hot loop
+  const isSmall = new Uint8Array(nextLabel);
+  let anySmall = false;
+  for (let i = 1; i < nextLabel; i++) {
+    if (compMaxY[i] - compMinY[i] + 1 < heightThreshold) {
+      isSmall[i] = 1;
+      anySmall = true;
+    }
+  }
+
+  if (!anySmall) return;
+
+  for (let i = 0; i < total; i++) {
+    if (isSmall[labels[i]]) {
+      data[i * 4 + 3] = 0;
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+}
+
 /** Get tight bounding box of non-transparent pixels in ImageData */
 function getTightBBox(imageData: ImageData): { x1: number; y1: number; x2: number; y2: number } | null {
   const { width, height, data } = imageData;
