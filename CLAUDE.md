@@ -33,6 +33,7 @@ Claude Code ←stdio→ MCP server (Node.js) ←HTTP→ :1234 → Tauri event �
 | `setup/shell.rs` | Shell detection, native dialogs, RC file injection |
 | `setup/claude.rs` | Claude Code hooks configuration |
 | `setup/mcp.rs` | MCP server installation + Claude Code MCP registration |
+| `logger.rs` | Log file tail-reader, `app_log!`/`app_warn!`/`app_error!` macros |
 | `platform/macos.rs` | Cocoa/objc window transparency, workspace visibility, dock visibility |
 
 ### MCP Server (`src-tauri/mcp-server/`)
@@ -82,6 +83,16 @@ When multiple terminals are open, the UI shows one winner: `busy > service > idl
 - MCP endpoints: `/mcp/say` (speech bubble), `/mcp/react` (temp animation), `/mcp/pet-status` (JSON status)
 - MCP reactions map to existing statuses: celebrate/excited→service, nervous→busy, confused→searching, sleep→disconnected
 
+## Logging
+
+- **Writer**: `tauri-plugin-log` appends structured lines to `ani-mime.log` inside the Tauri log dir (`~/Library/Logs/<bundle-id>/`)
+- **Reader**: `logger.rs` reads the tail of that same file to display in the Superpower Tool UI
+- **Rotation**: Configured as `KeepSome(3)` with 1MB max per file — do not increase without reason
+- **Tail-read**: `read_log_file()` seeks to the end of the file and reads only the last ~N×256 bytes. Never load the entire log file into memory.
+- **Macros**: Use `app_log!()`, `app_warn!()`, `app_error!()` for app-level logging — these route through the `log` crate so the plugin writes them to file
+- **Levels**: `debug` for dev diagnostics, `info` for state changes, `warn`/`error` for problems. Third-party crate noise is filtered in `lib.rs` (e.g. `mdns_sd` set to `Warn`)
+- **Don't truncate the log file externally** — `tauri-plugin-log` holds its own file handle; truncating causes stale size tracking and premature rotation
+
 ## Testing
 
 ### Automation-Friendly UI
@@ -105,8 +116,10 @@ Every interactive or observable UI element must be locatable by automated tests 
 
 - **Unit tests** (Vitest + React Testing Library): `src/**/*.test.{ts,tsx}`
 - **E2E tests** (Playwright): `e2e/*.spec.ts`
-- **Run e2e**: `bunx playwright test`
+- **Run e2e**: `bunx playwright test -c e2e/playwright.config.ts --project=chromium`
 - **Playwright config**: `e2e/playwright.config.ts` — chromium + webkit, trace on failure
+- **When to run e2e**: Before pushing. No pre-commit or pre-push hook is configured — run manually. E2e takes ~7s on Chromium; too slow for a commit hook.
+- **Tauri mock**: `e2e/tauri-mock.ts` — injects fake `__TAURI_INTERNALS__` for store, dialog, FS, window, and event plugins. Supports `__MOCK_DIALOG_RESULT__`, `__MOCK_READ_FILE_BYTES__`, `__MOCK_READ_FILE_MAP__`, `__MOCK_SAVE_DIALOG_RESULT__`, `__MOCK_WRITTEN_FILES__`, `__MOCK_WINDOW_SIZES__` for test assertions.
 
 ## Adding Features
 

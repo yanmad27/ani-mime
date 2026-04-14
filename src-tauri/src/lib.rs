@@ -24,12 +24,19 @@ const VISIT_DURATION_SECS: u64 = 15;
 
 #[tauri::command]
 fn get_logs() -> Vec<logger::LogEntry> {
-    logger::get_all_logs()
+    logger::read_log_file(1000)
 }
 
 #[tauri::command]
 fn clear_logs() {
-    logger::clear_logs();
+    logger::clear_log_file();
+}
+
+#[tauri::command]
+fn open_log_dir(app: tauri::AppHandle) {
+    if let Ok(log_dir) = app.path().app_log_dir() {
+        let _ = std::process::Command::new("open").arg(&log_dir).spawn();
+    }
 }
 
 #[tauri::command]
@@ -162,6 +169,14 @@ fn preview_dialog(dialog_id: String, app: tauri::AppHandle) {
 fn set_dock_visible(visible: bool, app: tauri::AppHandle) {
     crate::app_log!("[app] set_dock_visible -> {}", visible);
     platform::macos::set_dock_visibility(&app, visible);
+}
+
+#[tauri::command]
+fn set_tray_visible(visible: bool, app: tauri::AppHandle) {
+    crate::app_log!("[app] set_tray_visible -> {}", visible);
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        let _ = tray.set_visible(visible);
+    }
 }
 
 #[tauri::command]
@@ -315,9 +330,14 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![start_visit, get_logs, clear_logs, open_superpower, set_dev_mode, scenario_override, preview_dialog, set_dock_visible])
+        .invoke_handler(tauri::generate_handler![start_visit, get_logs, clear_logs, open_log_dir, open_superpower, set_dev_mode, scenario_override, preview_dialog, set_dock_visible, set_tray_visible])
         .setup(|app| {
             crate::app_log!("[app] starting Ani-Mime v{}", env!("CARGO_PKG_VERSION"));
+
+            // Tell our log reader where to find the log file
+            if let Ok(log_dir) = app.path().app_log_dir() {
+                logger::set_log_path(log_dir.join("ani-mime.log"));
+            }
 
             platform::macos::setup_macos_window(app);
             crate::app_log!("[app] macOS window configured");
@@ -415,7 +435,7 @@ pub fn run() {
                 .build(app)?;
             crate::app_log!("[app] tray icon created");
 
-            // Apply saved dock visibility preference
+            // Apply saved preferences
             {
                 let app_data_dir = app.path().app_data_dir()?;
                 let store_path = app_data_dir.join("settings.json");
@@ -425,6 +445,12 @@ pub fn run() {
                             if json.get("hideDock").and_then(|v| v.as_bool()).unwrap_or(false) {
                                 crate::app_log!("[app] restoring dock-hidden preference");
                                 platform::macos::set_dock_visibility(app.handle(), false);
+                            }
+                            if json.get("hideTray").and_then(|v| v.as_bool()).unwrap_or(false) {
+                                crate::app_log!("[app] restoring tray-hidden preference");
+                                if let Some(tray) = app.tray_by_id("main-tray") {
+                                    let _ = tray.set_visible(false);
+                                }
                             }
                         }
                     }

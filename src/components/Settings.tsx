@@ -9,8 +9,10 @@ import { useNickname } from "../hooks/useNickname";
 import { useAutoStart } from "../hooks/useAutoStart";
 import { useAutoUpdate } from "../hooks/useAutoUpdate";
 import { useDockVisible } from "../hooks/useDockVisible";
+import { useTrayVisible } from "../hooks/useTrayVisible";
 import { mimeCategories, getMimesByCategory } from "../constants/sprites";
 import { useScale } from "../hooks/useScale";
+import { effects, useEffectEnabled } from "../effects";
 import { useCustomMimes, ALL_STATUSES } from "../hooks/useCustomMimes";
 import { SmartImport } from "./SmartImport";
 import { AnimationPreview } from "./AnimationPreview";
@@ -18,6 +20,7 @@ import type { Status } from "../types/status";
 import { readFile } from "@tauri-apps/plugin-fs";
 import { appDataDir, join, resourceDir } from "@tauri-apps/api/path";
 import { openPath } from "@tauri-apps/plugin-opener";
+import { open } from "@tauri-apps/plugin-dialog";
 import { error as logError } from "@tauri-apps/plugin-log";
 import "../styles/settings.css";
 
@@ -74,10 +77,12 @@ export function Settings() {
   const { enabled: autoStartEnabled, setEnabled: setAutoStartEnabled } = useAutoStart();
   const { enabled: autoUpdateEnabled, setEnabled: setAutoUpdateEnabled } = useAutoUpdate();
   const { hidden: dockHidden, setHidden: setDockHidden } = useDockVisible();
+  const { hidden: trayHidden, setHidden: setTrayHidden } = useTrayVisible();
   const { scale, setScale, SCALE_PRESETS } = useScale();
-  const { mimes: customMimes, pickSpriteFile, addMime, addMimeFromBlobs, updateMime, deleteMime, exportMime, importMime } = useCustomMimes();
+  const { mimes: customMimes, pickSpriteFile, addMime, addMimeFromBlobs, updateMime, updateMimeFromSmartImport, deleteMime, exportMime, importMime } = useCustomMimes();
   const [tab, setTab] = useState<Tab>("general");
   const [creating, setCreating] = useState<false | "manual" | "smart">(false);
+  const [smartImportPath, setSmartImportPath] = useState<string | null>(null);
   const [editingMime, setEditingMime] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
@@ -228,10 +233,20 @@ export function Settings() {
     setSpriteInputs(init);
   };
 
-  const handleEditCustom = (id: string) => {
+  const handleEditCustom = async (id: string) => {
     const mime = customMimes.find((m) => m.id === id);
     if (!mime) return;
     setEditingMime(id);
+
+    if (mime.smartImportMeta) {
+      const base = await appDataDir();
+      const path = await join(base, "custom-sprites", mime.smartImportMeta.sheetFileName);
+      setSmartImportPath(path);
+      setCreating("smart");
+      setNewName(mime.name);
+      return;
+    }
+
     setCreating("manual");
     setNewName(mime.name);
     const filled: any = {};
@@ -335,6 +350,9 @@ export function Settings() {
                   ))}
                 </div>
               </div>
+              {effects.map((effect) => (
+                <EffectToggle key={effect.id} effectId={effect.id} name={effect.name} />
+              ))}
             </div>
           </div>
           <div className="settings-section">
@@ -379,6 +397,19 @@ export function Settings() {
                   className={`toggle-switch ${dockHidden ? "active" : ""}`}
                   onClick={() => setDockHidden(!dockHidden)}
                   data-testid="hide-dock-toggle"
+                >
+                  <span className="toggle-knob" />
+                </button>
+              </div>
+              <div className="settings-row with-hint">
+                <div>
+                  <span className="settings-row-label">Show in Menu Bar</span>
+                  <span className="settings-row-hint">Show the tray icon in the macOS menu bar for quick access.</span>
+                </div>
+                <button
+                  className={`toggle-switch ${!trayHidden ? "active" : ""}`}
+                  onClick={() => setTrayHidden(!trayHidden)}
+                  data-testid="show-tray-toggle"
                 >
                   <span className="toggle-knob" />
                 </button>
@@ -563,12 +594,32 @@ export function Settings() {
                 </div>
               ) : creating === "smart" ? (
                 <SmartImport
-                  onSave={async (mimeName, blobs) => {
-                    const id = await addMimeFromBlobs(mimeName, blobs);
-                    setPet(id);
+                  initialFilePath={smartImportPath ?? undefined}
+                  initialName={editingMime ? customMimes.find((m) => m.id === editingMime)?.name : undefined}
+                  initialFrameInputs={
+                    editingMime
+                      ? customMimes.find((m) => m.id === editingMime)?.smartImportMeta?.frameInputs
+                      : undefined
+                  }
+                  editingId={editingMime ?? undefined}
+                  onSave={async (mimeName, blobs, meta) => {
+                    if (editingMime) {
+                      await updateMimeFromSmartImport(
+                        editingMime,
+                        mimeName,
+                        blobs,
+                        meta.sheetBlob,
+                        meta.frameInputs
+                      );
+                      setEditingMime(null);
+                    } else {
+                      const id = await addMimeFromBlobs(mimeName, blobs, meta);
+                      setPet(id);
+                    }
                     setCreating(false);
+                    setSmartImportPath(null);
                   }}
-                  onCancel={handleCancelCreate}
+                  onCancel={() => { handleCancelCreate(); setSmartImportPath(null); }}
                 />
               ) : (
                 <>
@@ -613,6 +664,7 @@ export function Settings() {
                             className="delete-mime-btn"
                             onClick={(e) => { e.stopPropagation(); handleDeleteCustom(m.id); }}
                             title="Delete"
+                            data-testid={`delete-mime-${m.id}`}
                           >
                             x
                           </button>
@@ -625,7 +677,15 @@ export function Settings() {
                       <div className="add-icon">+</div>
                       <span className="pet-name">Manual</span>
                     </button>
-                    <button className="pet-card add-card" onClick={() => setCreating("smart")}>
+                    <button className="pet-card add-card" onClick={async () => {
+                      const result = await open({
+                        multiple: false,
+                        filters: [{ name: "Sprite Sheet", extensions: ["png", "gif", "jpg", "jpeg"] }],
+                      });
+                      if (!result) return;
+                      setSmartImportPath(result);
+                      setCreating("smart");
+                    }}>
                       <div className="add-icon">*</div>
                       <span className="pet-name">Import Sheet</span>
                     </button>
@@ -660,7 +720,7 @@ export function Settings() {
                   onClick={handleVersionClick}
                   style={{ userSelect: "none" }}
                 >
-                  Version 0.15.2{devMode && " (Dev Mode)"}
+                  Version 0.15.4{devMode && " (Dev Mode)"}
                 </div>
                 <div className="about-desc">A floating macOS desktop mascot that reacts to terminal and Claude Code activity in real-time.</div>
               </div>
@@ -723,6 +783,22 @@ export function Settings() {
           />
         )}
       </main>
+    </div>
+  );
+}
+
+function EffectToggle({ effectId, name }: { effectId: string; name: string }) {
+  const { enabled, setEnabled } = useEffectEnabled(effectId);
+  return (
+    <div className="settings-row">
+      <span className="settings-row-label">{name}</span>
+      <button
+        data-testid={`effect-toggle-${effectId}`}
+        className={`toggle-switch ${enabled ? "active" : ""}`}
+        onClick={() => setEnabled(!enabled)}
+      >
+        <span className="toggle-knob" />
+      </button>
     </div>
   );
 }

@@ -27,8 +27,17 @@ export interface PetInfo {
   sprites: Record<Status, SpriteConfig>;
 }
 
+export interface SmartImportMeta {
+  /** File name (within custom-sprites dir) of the processed source sheet PNG */
+  sheetFileName: string;
+  /** User-assigned frame-range strings keyed by status, e.g. "1-5", "6,7,8" */
+  frameInputs: Record<Status, string>;
+}
+
 export interface CustomMimeData {
   id: string;
   name: string;
   sprites: Record<Status, { fileName: string; frames: number }>;
+  /** Present only for mimes created via Smart Import. Lets us re-open them in the Smart Import editor. */
+  smartImportMeta?: SmartImportMeta;
 }
