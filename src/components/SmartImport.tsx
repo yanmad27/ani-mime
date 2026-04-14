@@ -210,6 +210,15 @@ export function SmartImport({
 
 
 
+  useEffect(() => {
+    if (!showModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowModal(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showModal]);
+
   const handleShowAllFrames = useCallback(() => {
     if (!canvas || frames.length === 0) return;
     if (allFramePreviews.length === 0) {
@@ -300,7 +309,7 @@ export function SmartImport({
               <span className="settings-row-label">Frames</span>
               <div className="smart-import-frames-info">
                 <span className="smart-import-file">{frames.length} detected</span>
-                <button className="smart-import-show-all-btn" onClick={handleShowAllFrames}>
+                <button className="smart-import-preview-btn" onClick={handleShowAllFrames}>
                   Show all
                 </button>
               </div>

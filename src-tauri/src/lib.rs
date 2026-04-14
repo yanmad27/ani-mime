@@ -376,7 +376,17 @@ pub fn run() {
                 .item(&PredefinedMenuItem::quit(app, Some("Quit Ani-Mime"))?)
                 .build()?;
 
-            let menu = MenuBuilder::new(app).item(&app_menu).build()?;
+            let edit_menu = SubmenuBuilder::new(app, "Edit")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+
+            let menu = MenuBuilder::new(app).item(&app_menu).item(&edit_menu).build()?;
             app.set_menu(menu)?;
             crate::app_log!("[app] menu bar created");
 
