@@ -50,6 +50,9 @@ Check ~/.ani-mime/setup-done exists?
                                 Write ~/.claude/settings.json hooks (if yes)
                                     │
                                     ▼
+                                Register MCP server in ~/.claude.json (if yes)
+                                    │
+                                    ▼
                                 Write ~/.ani-mime/setup-done marker
                                     │
                                     ▼
@@ -91,6 +94,23 @@ If the user opts in, hooks are added to `~/.claude/settings.json`:
 }
 ```
 
+### MCP Server
+
+If the user opts in to Claude Code, the MCP server is also registered in `~/.claude.json`:
+
+```json
+{
+  "mcpServers": {
+    "ani-mime": {
+      "command": "node",
+      "args": ["/Users/you/.ani-mime/mcp/server.mjs"]
+    }
+  }
+}
+```
+
+The MCP server script is copied from the bundled resources to `~/.ani-mime/mcp/server.mjs` on **every** app launch (not just first setup), so it stays up-to-date with app updates.
+
 ### Marker File
 
 `~/.ani-mime/setup-done` — Presence of this file prevents setup from running again.
@@ -112,3 +132,4 @@ To re-run setup:
 To manually remove hooks:
 1. Edit `~/.zshrc` (or equivalent) and remove the `# --- Ani-Mime Terminal Hook ---` block
 2. Edit `~/.claude/settings.json` and remove entries containing `127.0.0.1:1234`
+3. Edit `~/.claude.json` and remove the `"ani-mime"` entry from `"mcpServers"` (or run `claude mcp remove ani-mime`)

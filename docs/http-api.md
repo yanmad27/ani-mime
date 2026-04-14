@@ -94,6 +94,93 @@ Signal that a visiting dog is leaving.
 
 ---
 
+## MCP Endpoints
+
+These endpoints are called by the MCP server sidecar (`~/.ani-mime/mcp/server.mjs`) on behalf of Claude Code.
+
+### POST `/mcp/say`
+
+Make the pet say something via a speech bubble.
+
+**Request Body (JSON):**
+
+```json
+{
+  "message": "Great job fixing that bug!",
+  "duration_secs": 7
+}
+```
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `message` | Yes | — | Text to show in speech bubble |
+| `duration_secs` | No | 7 | How long to show the bubble |
+
+**Behavior:**
+- Emits `mcp-say` event to frontend with `{ message, duration_ms }`
+- Frontend shows speech bubble (respects bubble enabled setting)
+
+---
+
+### POST `/mcp/react`
+
+Trigger a temporary reaction animation on the pet.
+
+**Request Body (JSON):**
+
+```json
+{
+  "reaction": "celebrate",
+  "duration_secs": 3
+}
+```
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `reaction` | Yes | — | One of: `celebrate`, `nervous`, `confused`, `excited`, `sleep` |
+| `duration_secs` | No | 3 | How long to play the reaction |
+
+**Reaction → Animation Mapping:**
+
+| Reaction | Mapped Status | Animation |
+|----------|---------------|-----------|
+| `celebrate` | `service` | Barking/jumping |
+| `excited` | `service` | Barking/happy |
+| `nervous` | `busy` | Sniffing/alert |
+| `confused` | `searching` | Looking around |
+| `sleep` | `disconnected` | Sleeping |
+
+**Behavior:**
+- Emits `mcp-react` event to frontend with `{ status, duration_ms }`
+- Frontend temporarily overrides displayed animation, reverts after duration
+- Priority: scenario override (dev tools) > reaction (MCP) > real status
+
+---
+
+### GET `/mcp/pet-status`
+
+Get the pet's current status as JSON.
+
+**Response (JSON):**
+
+```json
+{
+  "pet_type": "rottweiler",
+  "nickname": "Buddy",
+  "current_status": "idle",
+  "sleeping": false,
+  "sessions_active": 2,
+  "peers_nearby": 3,
+  "visitors": [
+    { "nickname": "Alice", "pet": "dalmatian" }
+  ],
+  "is_visiting": false,
+  "uptime_secs": 3600
+}
+```
+
+---
+
 ## Debug Endpoints
 
 ### GET `/debug`
@@ -122,3 +209,6 @@ sessions: 2
 | Claude Code Stop hook | `/status?pid=0&state=idle` | Per stop |
 | Peer visit (outgoing) | Peer's `/visit` | Per visit initiation |
 | Peer visit end (outgoing) | Peer's `/visit-end` | Per visit completion |
+| MCP `pet_say` tool | `/mcp/say` | Per Claude Code tool call |
+| MCP `pet_react` tool | `/mcp/react` | Per Claude Code tool call |
+| MCP `pet_status` tool | `/mcp/pet-status` | Per Claude Code tool call |

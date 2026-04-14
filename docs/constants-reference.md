@@ -32,6 +32,14 @@ All hardcoded values, timeouts, and configurable parameters in the codebase.
 | Max log entries: `1000` | `logger.rs` | Ring buffer size, oldest dropped on overflow |
 | Nickname max length: `20` | `useNickname.ts` | Character limit for display names |
 
+### MCP Defaults
+
+| Value | File | Purpose |
+|-------|------|---------|
+| `pet_say` default duration: `7s` | `server.mjs`, `server.rs` | Speech bubble display time |
+| `pet_react` default duration: `3s` | `server.mjs`, `server.rs` | Reaction animation time |
+| MCP protocol version: `2024-11-05` | `server.mjs` | JSON-RPC protocol version |
+
 ### Special Values
 
 | Value | Meaning | File |
@@ -40,6 +48,8 @@ All hardcoded values, timeouts, and configurable parameters in the codebase.
 | `/tmp/tauri-heartbeat-{pid}` | Heartbeat PID guard file | shell scripts |
 | `/tmp/tauri-shell-pid` | Claude Code PID bridge | `tauri-hook.sh` |
 | `~/.ani-mime/setup-done` | First-launch marker | `setup/mod.rs` |
+| `~/.ani-mime/mcp/server.mjs` | MCP server script | `setup/mcp.rs` |
+| `~/.claude.json` | Claude Code MCP server registry | `setup/mcp.rs` |
 
 ## Frontend Constants (TypeScript)
 

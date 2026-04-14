@@ -64,18 +64,41 @@ pub fn start_http_server(app_handle: tauri::AppHandle, app_state: Arc<Mutex<AppS
                                 emit_if_changed(&app_handle, &mut st);
                             } else if url.contains("state=idle") {
                                 let busy_since = session.busy_since;
-                                if busy_since > 0 {
-                                    let duration = now.saturating_sub(busy_since);
-                                    crate::app_log!("[http] pid={} task completed ({}s)", pid, duration);
-                                    if let Err(e) = app_handle.emit("task-completed", TaskCompleted { duration_secs: duration }) {
-                                        crate::app_error!("[http] failed to emit task-completed: {}", e);
-                                    }
-                                }
+                                let task_duration = if busy_since > 0 {
+                                    Some(now.saturating_sub(busy_since))
+                                } else {
+                                    None
+                                };
 
                                 session.busy_type.clear();
                                 session.ui_state = "idle".to_string();
                                 session.service_since = 0;
                                 session.busy_since = 0;
+                                // Drop session borrow before accessing st fields
+                                drop(session);
+
+                                if let Some(duration) = task_duration {
+                                    crate::app_log!("[http] pid={} task completed ({}s)", pid, duration);
+                                    if let Err(e) = app_handle.emit("task-completed", TaskCompleted { duration_secs: duration }) {
+                                        crate::app_error!("[http] failed to emit task-completed: {}", e);
+                                    }
+
+                                    // Update daily usage counters
+                                    let today = now / 86400;
+                                    if today != st.usage_day {
+                                        st.usage_day = today;
+                                        st.tasks_completed_today = 0;
+                                        st.total_busy_secs_today = 0;
+                                        st.longest_task_today_secs = 0;
+                                    }
+                                    st.tasks_completed_today += 1;
+                                    st.total_busy_secs_today += duration;
+                                    st.last_task_duration_secs = duration;
+                                    if duration > st.longest_task_today_secs {
+                                        st.longest_task_today_secs = duration;
+                                    }
+                                }
+
                                 crate::app_log!("[http] pid={} -> idle", pid);
                                 emit_if_changed(&app_handle, &mut st);
                             } else {
@@ -245,6 +268,108 @@ pub fn start_http_server(app_handle: tauri::AppHandle, app_state: Arc<Mutex<AppS
                 let resp = tiny_http::Response::from_string("ok")
                     .with_status_code(200)
                     .with_header(cors.clone());
+                let _ = req.respond(resp);
+                continue;
+            }
+
+            // --- /mcp/say (trigger speech bubble) ---
+            if url.starts_with("/mcp/say") && method == "POST" {
+                let mut body = String::new();
+                let reader = req.as_reader();
+                if reader.read_to_string(&mut body).is_ok() {
+                    if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&body) {
+                        let message = payload["message"].as_str().unwrap_or("").to_string();
+                        let duration_secs = payload["duration_secs"].as_u64().unwrap_or(7);
+                        crate::app_log!("[mcp] say: \"{}\" ({}s)", message, duration_secs);
+                        if let Err(e) = app_handle.emit("mcp-say", serde_json::json!({
+                            "message": message,
+                            "duration_ms": duration_secs * 1000,
+                        })) {
+                            crate::app_error!("[mcp] failed to emit mcp-say: {}", e);
+                        }
+                    }
+                }
+                let resp = tiny_http::Response::from_string("ok")
+                    .with_status_code(200)
+                    .with_header(cors.clone());
+                let _ = req.respond(resp);
+                continue;
+            }
+
+            // --- /mcp/react (trigger temporary animation) ---
+            if url.starts_with("/mcp/react") && method == "POST" {
+                let mut body = String::new();
+                let reader = req.as_reader();
+                if reader.read_to_string(&mut body).is_ok() {
+                    if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&body) {
+                        let reaction = payload["reaction"].as_str().unwrap_or("").to_string();
+                        let duration_secs = payload["duration_secs"].as_u64().unwrap_or(3);
+
+                        let mapped_status = match reaction.as_str() {
+                            "celebrate" => "service",
+                            "nervous" => "busy",
+                            "confused" => "searching",
+                            "excited" => "service",
+                            "sleep" => "disconnected",
+                            _ => "idle",
+                        };
+
+                        crate::app_log!("[mcp] react: {} -> {} ({}s)", reaction, mapped_status, duration_secs);
+                        if let Err(e) = app_handle.emit("mcp-react", serde_json::json!({
+                            "status": mapped_status,
+                            "duration_ms": duration_secs * 1000,
+                        })) {
+                            crate::app_error!("[mcp] failed to emit mcp-react: {}", e);
+                        }
+                    }
+                }
+                let resp = tiny_http::Response::from_string("ok")
+                    .with_status_code(200)
+                    .with_header(cors.clone());
+                let _ = req.respond(resp);
+                continue;
+            }
+
+            // --- /mcp/pet-status (return pet info as JSON) ---
+            if url.starts_with("/mcp/pet-status") {
+                let st = app_state.lock().unwrap();
+                let visitors: Vec<serde_json::Value> = st.visitors.iter().map(|v| {
+                    serde_json::json!({ "nickname": v.nickname, "pet": v.pet })
+                }).collect();
+
+                // Compute current busy duration (longest active busy session)
+                let current_busy_secs = st.sessions.values()
+                    .filter(|s| s.ui_state == "busy" && s.busy_since > 0)
+                    .map(|s| now.saturating_sub(s.busy_since))
+                    .max()
+                    .unwrap_or(0);
+
+                let body = serde_json::json!({
+                    "pet_type": st.pet,
+                    "nickname": st.nickname,
+                    "current_status": st.current_ui,
+                    "sleeping": st.sleeping,
+                    "sessions_active": st.sessions.len(),
+                    "peers_nearby": st.peers.len(),
+                    "visitors": visitors,
+                    "is_visiting": st.visiting.is_some(),
+                    "uptime_secs": now.saturating_sub(st.started_at),
+                    "current_busy_secs": current_busy_secs,
+                    "usage_today": {
+                        "tasks_completed": st.tasks_completed_today,
+                        "total_busy_mins": st.total_busy_secs_today / 60,
+                        "longest_task_mins": st.longest_task_today_secs / 60,
+                        "last_task_duration_secs": st.last_task_duration_secs,
+                    },
+                });
+                drop(st);
+
+                crate::app_log!("[mcp] pet-status requested");
+                let json_header: tiny_http::Header = "Content-Type: application/json".parse().unwrap();
+                let resp = tiny_http::Response::from_string(body.to_string())
+                    .with_status_code(200)
+                    .with_header(cors.clone())
+                    .with_header(json_header);
                 let _ = req.respond(resp);
                 continue;
             }

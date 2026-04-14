@@ -58,7 +58,8 @@
       "script/terminal-mirror.bash",
       "script/terminal-mirror.fish",
       "script/tauri-hook.sh",
-      "docs/custom-mime-guide.pdf"
+      "docs/custom-mime-guide.pdf",
+      "mcp-server/server.mjs"
     ],
     "active": true,
     "targets": "all",

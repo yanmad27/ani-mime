@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { Status } from "../types/status";
 
@@ -25,6 +25,8 @@ export function useStatus(): UseStatusResult {
   const [status, setStatus] = useState<Status>("initializing");
   const [away, setAway] = useState(false);
   const [scenarioStatus, setScenarioStatus] = useState<Status | null>(null);
+  const [reactionStatus, setReactionStatus] = useState<Status | null>(null);
+  const reactionTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     const unlistenStatus = listen<string>("status-changed", (e) => {
@@ -52,8 +54,30 @@ export function useStatus(): UseStatusResult {
     };
   }, []);
 
+  // MCP reaction: temporary animation override with auto-revert
+  useEffect(() => {
+    const unlisten = listen<{ status: string; duration_ms: number }>("mcp-react", (e) => {
+      if (validStatuses.has(e.payload.status)) {
+        clearTimeout(reactionTimerRef.current);
+        setReactionStatus(e.payload.status as Status);
+        reactionTimerRef.current = setTimeout(() => {
+          setReactionStatus(null);
+        }, e.payload.duration_ms || 3000);
+      }
+    });
+
+    return () => {
+      clearTimeout(reactionTimerRef.current);
+      unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  // Priority: scenario (dev tools) > reaction (MCP) > real status
   if (scenarioStatus) {
     return { status: scenarioStatus, scenario: true };
+  }
+  if (reactionStatus) {
+    return { status: reactionStatus, scenario: false };
   }
   return { status: away ? "visiting" : status, scenario: false };
 }
