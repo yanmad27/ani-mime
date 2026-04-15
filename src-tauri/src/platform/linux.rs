@@ -12,10 +12,95 @@ pub fn setup_main_window(app: &tauri::App) {
     if let Err(e) = window.set_shadow(false) {
         crate::app_warn!("[platform] failed to disable shadow: {}", e);
     }
+    if let Err(e) = window.set_always_on_top(true) {
+        crate::app_warn!("[platform] failed to set always on top: {}", e);
+    }
     if let Err(e) = window.set_visible_on_all_workspaces(true) {
         crate::app_warn!("[platform] failed to set visible on all workspaces: {}", e);
     }
-    crate::app_log!("[platform] linux main window configured (relying on tauri transparent=true)");
+
+    // Keep GTK-level always-above as a best-effort hint for native Linux compositors.
+    // Do NOT use WindowTypeHint::Notification — WSLg's RAIL bridge skips notification
+    // windows and they never get a proper Windows HWND, making them unfindable by
+    // the PowerShell approach below.
+    match window.gtk_window() {
+        Ok(gtk_win) => {
+            use gtk::prelude::GtkWindowExt;
+            gtk_win.set_keep_above(true);
+        }
+        Err(e) => crate::app_warn!("[platform] gtk_window() unavailable: {}", e),
+    }
+
+    // WSLg: GTK/X11 z-order hints live inside the Linux compositor and never cross
+    // the RDP/RAIL bridge into Windows DWM.  The only fix is calling Windows'
+    // SetWindowPos(HWND_TOPMOST) via PowerShell, which WSL2 can invoke directly.
+    if is_wsl() {
+        crate::app_log!("[platform] WSLg detected — will set HWND_TOPMOST via PowerShell");
+        std::thread::spawn(|| {
+            // Retry: the WSLg RAIL HWND may not be registered in DWM immediately.
+            for attempt in 1u8..=8 {
+                std::thread::sleep(std::time::Duration::from_millis(
+                    if attempt == 1 { 2000 } else { 1500 },
+                ));
+                if apply_wsl_topmost("Ani-Mime") {
+                    return;
+                }
+                crate::app_warn!("[platform] WSLg topmost attempt {} — not found yet", attempt);
+            }
+            crate::app_error!("[platform] WSLg topmost: gave up after 8 attempts");
+        });
+    }
+
+    crate::app_log!("[platform] linux main window configured");
+}
+
+/// Returns `true` when running inside Windows Subsystem for Linux (WSL2 / WSLg).
+fn is_wsl() -> bool {
+    std::fs::read_to_string("/proc/version")
+        .map(|s| s.to_lowercase().contains("microsoft"))
+        .unwrap_or(false)
+}
+
+/// Set `WS_EX_TOPMOST` on the Windows HWND for the given window title via
+/// PowerShell P/Invoke.  Returns `true` when the HWND was found and raised.
+///
+/// Uses `EnumWindows` (not `FindWindow`) so it:
+///   - Handles titles that differ from what GTK exposes (RAIL can mangle them)
+///   - Works even if the HWND is a child of the WSLg compositor window
+///   - Logs all visible window titles on failure so we can see the real title
+fn apply_wsl_topmost(title: &str) -> bool {
+    // C# class in a single-quoted PS string (no single-quotes inside, so no escaping).
+    // EnumWindows + case-insensitive IndexOf so minor title differences don't matter.
+    // On success prints "ok", on failure prints "not-found:<title1>;<title2>;..."
+    let type_def = r#"using System;using System.Collections.Generic;using System.Runtime.InteropServices;using System.Text;public class AniMimeW{public delegate bool EnumWinProc(IntPtr h,IntPtr l);[DllImport("user32")]public static extern bool EnumWindows(EnumWinProc p,IntPtr l);[DllImport("user32")]public static extern bool IsWindowVisible(IntPtr h);[DllImport("user32",CharSet=CharSet.Unicode)]public static extern int GetWindowText(IntPtr h,StringBuilder s,int m);[DllImport("user32")]public static extern bool SetWindowPos(IntPtr h,IntPtr i,int x,int y,int cx,int cy,uint f);public static string FindAndPin(string search){var titles=new List<string>();IntPtr target=IntPtr.Zero;EnumWindows((h,l)=>{if(!IsWindowVisible(h))return true;var sb=new StringBuilder(512);GetWindowText(h,sb,512);var t=sb.ToString();if(t.Length>0){titles.Add(t);if(target==IntPtr.Zero&&t.IndexOf(search,StringComparison.OrdinalIgnoreCase)>=0)target=h;}return true;},IntPtr.Zero);if(target!=IntPtr.Zero){SetWindowPos(target,new IntPtr(-1),0,0,0,0,3);return"ok";}return"not-found:"+string.Join(";",titles);}}"#;
+
+    let ps = format!(
+        "Add-Type -TypeDefinition '{type_def}';Write-Host ([AniMimeW]::FindAndPin('{title}'))"
+    );
+
+    match std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &ps])
+        .output()
+    {
+        Ok(o) => {
+            let out = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if out == "ok" {
+                crate::app_log!("[platform] WSLg: HWND_TOPMOST applied for '{}'", title);
+                true
+            } else if let Some(rest) = out.strip_prefix("not-found:") {
+                // Log the real window titles so we can see what RAIL exposes
+                crate::app_log!(
+                    "[platform] WSLg: '{}' not found. Visible HWNDs: {}",
+                    title, rest
+                );
+                false
+            } else {
+                crate::app_warn!("[platform] WSLg topmost unexpected output: {}", out);
+                false
+            }
+        }
+        Err(_) => false, // powershell.exe not available — native Linux, ignore
+    }
 }
 
 /// Linux has no global dock concept; `skipTaskbar: true` in tauri.conf.json already

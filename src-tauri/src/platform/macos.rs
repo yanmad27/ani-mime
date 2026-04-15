@@ -36,9 +36,9 @@ pub fn setup_main_window(app: &tauri::App) {
                     }
                 }
 
-                // Opt out of macOS Sequoia window tiling/snapping:
-                // canJoinAllSpaces (1<<0) | fullScreenNone (1<<9) | stationary (1<<4)
-                let behavior: u64 = (1 << 0) | (1 << 9) | (1 << 4);
+                // Stay on all spaces including full-screen apps:
+                // canJoinAllSpaces (1<<0) | fullScreenAuxiliary (1<<8) | stationary (1<<4)
+                let behavior: u64 = (1 << 0) | (1 << 8) | (1 << 4);
                 let _: () = msg_send![ns_win, setCollectionBehavior: behavior];
             }
             crate::app_log!("[platform] NSWindow configured (transparent, no-tile, no-radius)");

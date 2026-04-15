@@ -75,6 +75,7 @@ version = "0.15.5"
 dependencies = [
  "cocoa",
  "dirs 6.0.0",
+ "gtk",
  "hostname",
  "log",
  "mdns-sd",
