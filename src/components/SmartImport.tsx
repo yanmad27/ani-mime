@@ -456,7 +456,7 @@ export function SmartImport({
                         className={cls}
                         data-testid={`frame-chip-${status}-${thumb.num}`}
                       >
-                        <img src={thumb.src} alt={`Frame ${thumb.num}`} className="smart-import-frame-thumb" />
+                        <img src={thumb.src} alt={`Frame ${thumb.num}`} className="smart-import-frame-thumb" draggable={false} />
                         <span className="smart-import-frame-num">{thumb.num}</span>
                         <button
                           type="button"

@@ -820,6 +820,14 @@
 
 .smart-import-frame-thumb-item {
   cursor: grab;
+  user-select: none;
+  -webkit-user-drag: element;
+}
+
+.smart-import-frame-thumb-item img,
+.smart-import-frame-thumb-item span {
+  -webkit-user-drag: none;
+  pointer-events: none;
 }
 
 .smart-import-frame-thumb-item:active {
