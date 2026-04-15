@@ -420,7 +420,13 @@ export function Settings() {
                 </div>
                 <button
                   className={`toggle-switch ${dockHidden ? "active" : ""}`}
-                  onClick={() => setDockHidden(!dockHidden)}
+                  onClick={async () => {
+                    const next = !dockHidden;
+                    // When hiding the Dock, force the menu bar icon on so the
+                    // user always has a way to reopen Settings.
+                    if (next && trayHidden) await setTrayHidden(false);
+                    await setDockHidden(next);
+                  }}
                   data-testid="hide-dock-toggle"
                 >
                   <span className="toggle-knob" />
@@ -429,11 +435,21 @@ export function Settings() {
               <div className="settings-row with-hint">
                 <div>
                   <span className="settings-row-label">Show in Menu Bar</span>
-                  <span className="settings-row-hint">Show the tray icon in the macOS menu bar for quick access.</span>
+                  <span className="settings-row-hint">
+                    {dockHidden
+                      ? "Required while the Dock icon is hidden — otherwise there'd be no way to reopen Settings."
+                      : "Show the tray icon in the macOS menu bar for quick access."}
+                  </span>
                 </div>
                 <button
-                  className={`toggle-switch ${!trayHidden ? "active" : ""}`}
-                  onClick={() => setTrayHidden(!trayHidden)}
+                  className={`toggle-switch ${!trayHidden ? "active" : ""} ${dockHidden ? "locked" : ""}`}
+                  onClick={() => {
+                    if (dockHidden) return;
+                    setTrayHidden(!trayHidden);
+                  }}
+                  disabled={dockHidden}
+                  aria-disabled={dockHidden}
+                  title={dockHidden ? "Locked on while Dock is hidden" : undefined}
                   data-testid="show-tray-toggle"
                 >
                   <span className="toggle-knob" />
