@@ -115,6 +115,18 @@ describe("SmartImport frame editor", () => {
     expect(screen.queryByTestId("frame-chip-busy-2")).toBeNull();
   });
 
+  it("normalizes text input on blur and rebuilds thumbs", async () => {
+    render(<SmartImport onSave={vi.fn()} onCancel={vi.fn()} initialFilePath="/fake.png" />);
+    await screen.findByTestId("frame-list-idle");
+    const input = screen.getAllByPlaceholderText("1-5")[0] as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "1,2,3" } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(input.value).toBe("1-3"));
+    expect(screen.getByTestId("frame-chip-idle-1")).toBeInTheDocument();
+    expect(screen.getByTestId("frame-chip-idle-2")).toBeInTheDocument();
+    expect(screen.getByTestId("frame-chip-idle-3")).toBeInTheDocument();
+  });
+
   it("copies a frame when Alt is held during drop", async () => {
     render(<SmartImport onSave={vi.fn()} onCancel={vi.fn()} initialFilePath="/fake.png" />);
     const source = await screen.findByTestId("frame-chip-busy-2");
