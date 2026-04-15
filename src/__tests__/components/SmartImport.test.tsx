@@ -98,15 +98,12 @@ describe("SmartImport frame editor", () => {
     });
   });
 
-  it("reorders frames within a group via drag-drop", async () => {
+  it("moves a frame from busy to idle on drop (cross-group move)", async () => {
     render(<SmartImport onSave={vi.fn()} onCancel={vi.fn()} initialFilePath="/fake.png" />);
-    // Remove a frame first so idle has only 1; instead seed by dragging between existing lists.
-    // Use busy list (which has frame 2) into idle (which has frame 1).
     const source = await screen.findByTestId("frame-chip-busy-2");
     const target = await screen.findByTestId("frame-chip-idle-1");
     const dataTransfer = makeDT();
     fireEvent.dragStart(source, { dataTransfer });
-    // drop before idle-1
     fireEvent.dragOver(target, { dataTransfer, clientX: 0 });
     fireEvent.drop(target, { dataTransfer });
     await waitFor(() => {
@@ -114,5 +111,27 @@ describe("SmartImport frame editor", () => {
       const nums = [...list.querySelectorAll(".smart-import-frame-num")].map((n) => n.textContent);
       expect(nums).toEqual(["2", "1"]);
     });
+    // source lost it
+    expect(screen.queryByTestId("frame-chip-busy-2")).toBeNull();
   });
+
+  it("copies a frame when Alt is held during drop", async () => {
+    render(<SmartImport onSave={vi.fn()} onCancel={vi.fn()} initialFilePath="/fake.png" />);
+    const source = await screen.findByTestId("frame-chip-busy-2");
+    const target = await screen.findByTestId("frame-chip-idle-1");
+    const dataTransfer = makeDT();
+    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.dragOver(target, { dataTransfer, clientX: 0 });
+    // Simulate Alt-held: testing-library doesn't reliably propagate altKey
+    // through drag events, so set dropEffect directly (production sets this
+    // during dragOver when e.altKey is true).
+    dataTransfer.dropEffect = "copy";
+    fireEvent.drop(target, { dataTransfer });
+    await waitFor(() => {
+      expect(screen.getByTestId("frame-chip-idle-2")).toBeInTheDocument();
+    });
+    // source kept it
+    expect(screen.getByTestId("frame-chip-busy-2")).toBeInTheDocument();
+  });
+
 });

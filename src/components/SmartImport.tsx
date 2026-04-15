@@ -258,7 +258,7 @@ export function SmartImport({
     const raw = e.dataTransfer.getData("application/x-frame");
     if (!raw) return;
     const data = JSON.parse(raw) as { sourceStatus: Status; index: number; num: number };
-    const copy = e.altKey;
+    const copy = e.altKey || e.dataTransfer.dropEffect === "copy";
     const insertAt = dropTarget?.status === status ? dropTarget.index : frameThumbs[status].length;
 
     if (data.sourceStatus === status) {
