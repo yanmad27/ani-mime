@@ -116,7 +116,29 @@ export function Settings() {
             const bytes = await readFile(filePath);
             if (cancelled) return;
             const blob = new Blob([bytes], { type: "image/png" });
-            const url = URL.createObjectURL(blob);
+            const sheetUrl = URL.createObjectURL(blob);
+            // Extract first frame only so grid sheets don't show all frames
+            const url = await new Promise<string>((resolve) => {
+              const img = new Image();
+              img.onload = () => {
+                const w = img.naturalWidth;
+                const h = img.naturalHeight;
+                // Infer frame size: try 128 first, then fall back to sheet height
+                const fp = [128, 64].find((s) => w >= s && h >= s && Number.isInteger(w / s)) ?? h;
+                const canvas = document.createElement("canvas");
+                canvas.width = fp;
+                canvas.height = fp;
+                const ctx = canvas.getContext("2d")!;
+                ctx.drawImage(img, 0, 0, fp, fp, 0, 0, fp, fp);
+                URL.revokeObjectURL(sheetUrl);
+                resolve(canvas.toDataURL("image/png"));
+              };
+              img.onerror = () => {
+                resolve(sheetUrl);
+              };
+              img.src = sheetUrl;
+            });
+            if (cancelled) return;
             urls.push(url);
             previews[mime.id] = url;
           } catch (err) {
@@ -649,8 +671,8 @@ export function Settings() {
                               className="pet-preview"
                               style={{
                                 backgroundImage: customPreviews[m.id] ? `url(${customPreviews[m.id]})` : "none",
-                                backgroundSize: "auto 48px",
-                                backgroundPosition: "0 0",
+                                backgroundSize: "contain",
+                                backgroundPosition: "center",
                                 backgroundRepeat: "no-repeat",
                                 imageRendering: "pixelated",
                               }}

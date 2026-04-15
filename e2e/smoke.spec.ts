@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tauriMockScript } from './tauri-mock';
@@ -294,47 +293,7 @@ test('upload Charlotte as custom sprite via manual flow', async ({ page }) => {
 });
 
 // ---------------------------------------------------------------------------
-// 11. Charlotte sprite renders at tiny (0.5x) size
-// ---------------------------------------------------------------------------
-test('Charlotte sprite renders at tiny size (64×64) on main page', async ({ page }) => {
-  await loadWithMock(page);
-
-  // Wait for initial render
-  await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
-
-  const charlotte = {
-    id: 'custom-12345',
-    name: 'Charlotte',
-    sprites: {
-      idle:          { fileName: 'custom-12345-idle.png',          frames: 5 },
-      busy:          { fileName: 'custom-12345-busy.png',          frames: 8 },
-      service:       { fileName: 'custom-12345-service.png',       frames: 3 },
-      disconnected:  { fileName: 'custom-12345-disconnected.png',  frames: 1 },
-      searching:     { fileName: 'custom-12345-searching.png',     frames: 17 },
-      initializing:  { fileName: 'custom-12345-initializing.png',  frames: 4 },
-      visiting:      { fileName: 'custom-12345-visiting.png',      frames: 6 },
-    },
-  };
-
-  // Set Charlotte as the active pet at tiny (0.5x) scale via events
-  await page.evaluate((mimeData) => {
-    const emit = (window as any).__TEST_EMIT__;
-    emit('custom-mimes-changed', [mimeData]);
-    emit('pet-changed', 'custom-12345');
-    emit('scale-changed', 0.5);
-  }, charlotte);
-
-  // The sprite appears once the custom sprite URL resolves asynchronously
-  const sprite = page.locator('[data-testid="mascot-sprite"]');
-  await expect(sprite).toBeVisible();
-
-  // At scale 0.5, sprite should be 64×64 (128 * 0.5)
-  await expect(sprite).toHaveCSS('width', '64px');
-  await expect(sprite).toHaveCSS('height', '64px');
-});
-
-// ---------------------------------------------------------------------------
-// 12. Edit Charlotte: rename and change busy frame range
+// 11. Edit Charlotte: rename and change busy frame range
 // ---------------------------------------------------------------------------
 test('edit Charlotte sprite: rename and change busy frame range', async ({ page }) => {
   await loadWithMock(page, '/settings.html');
@@ -410,106 +369,22 @@ test('edit Charlotte sprite: rename and change busy frame range', async ({ page 
 });
 
 // ---------------------------------------------------------------------------
-// 13. SmartImport Charlotte: auto-fill name and custom frame selection
-// ---------------------------------------------------------------------------
-test('SmartImport Charlotte with auto-fill name and frame selection', async ({ page }) => {
-  await loadWithMock(page, '/settings.html');
-
-  // Load Charlotte sprite sheet and inject as mock readFile result
-  const charlottePath = path.resolve(__e2eDir, '../src/__tests__/fixtures/sprites/charlotte/input.png');
-  const b64 = readFileSync(charlottePath).toString('base64');
-
-  await page.evaluate((data: string) => {
-    const binary = atob(data);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    (window as any).__MOCK_READ_FILE_BYTES__ = bytes;
-    (window as any).__MOCK_DIALOG_RESULT__ = '/mock/sprites/Charlotte.png';
-  }, b64);
-
-  // Navigate to Mime tab
-  await page.click('.sidebar-item:nth-child(2)');
-  await expect(page.locator('.settings-title')).toHaveText('Mime');
-
-  // Click "Import Sheet" to trigger file dialog mock → SmartImport opens
-  await page.click('.pet-card.add-card:has-text("Import Sheet")');
-
-  // Wait for sprite sheet processing — frame assignments should appear
-  const frameAssign = page.locator('.smart-import-frame-assign');
-  await expect(frameAssign.first()).toBeVisible();
-  await expect(frameAssign).toHaveCount(7);
-
-  // Verify name is auto-filled as "Charlotte" (filename without extension)
-  const nameInput = page.locator('.smart-import .settings-input');
-  await expect(nameInput).toHaveValue('Charlotte');
-
-  // Frame ranges matching the Charlotte sprite sheet assignment
-  // (from screenshots: idle=1-5,51-55,57,58 busy=6-43 etc.)
-  const frameRanges: Record<string, { input: string; count: number }> = {
-    idle:          { input: '1-5,51-55,57,58', count: 12 },
-    busy:          { input: '6-43',            count: 38 },
-    service:       { input: '14-19',           count: 6 },
-    disconnected:  { input: '44-50',           count: 7 },
-    searching:     { input: '35-43',           count: 9 },
-    initializing:  { input: '6-13',            count: 8 },
-    visiting:      { input: '20-43',           count: 24 },
-  };
-  const statusOrder = ['idle', 'busy', 'service', 'disconnected', 'searching', 'initializing', 'visiting'];
-
-  // Edit frame ranges and verify thumbnails update
-  const frameInputs = page.locator('.smart-import-frame-input');
-  for (let i = 0; i < statusOrder.length; i++) {
-    const status = statusOrder[i];
-    const input = frameInputs.nth(i);
-    await input.clear();
-    await input.fill(frameRanges[status].input);
-    await input.blur(); // triggers thumbnail update
-  }
-
-  // Verify each status shows the correct number of frame thumbnails with numbers
-  for (let i = 0; i < statusOrder.length; i++) {
-    const status = statusOrder[i];
-    const assign = frameAssign.nth(i);
-    const thumbs = assign.locator('.smart-import-frame-thumb-item');
-    const nums = assign.locator('.smart-import-frame-num');
-
-    // Correct frame count
-    await expect(thumbs).toHaveCount(frameRanges[status].count);
-    // Each thumbnail has a frame number label
-    await expect(nums).toHaveCount(frameRanges[status].count);
-  }
-
-  // Verify first frame number for idle is "1"
-  const idleFirstNum = frameAssign.first().locator('.smart-import-frame-num').first();
-  await expect(idleFirstNum).toHaveText('1');
-
-  // Save the mime
-  const saveBtn = page.locator('.creator-btn.save');
-  await expect(saveBtn).toBeEnabled();
-  await saveBtn.click();
-
-  // SmartImport should close and Charlotte appears in mime list
-  await expect(page.locator('.smart-import')).not.toBeVisible();
-  await expect(page.locator('.pet-card-wrapper .pet-name', { hasText: 'Charlotte' })).toBeVisible();
-});
-
-// ---------------------------------------------------------------------------
-// 13b. SmartImport create → edit → re-save round trip
+// 13. SmartImport create → edit → re-save round trip
 // ---------------------------------------------------------------------------
 test('smart-import mime can be edited via Smart Import and keeps its meta', async ({ page }) => {
   await loadWithMock(page, '/settings.html');
 
-  // Load Charlotte fixture bytes
-  const charlottePath = path.resolve(__e2eDir, '../src/__tests__/fixtures/sprites/charlotte/input.png');
-  const charlotteBytes = readFileSync(charlottePath);
-  const b64 = charlotteBytes.toString('base64');
+  // Load Bowser fixture bytes
+  const bowserPath = path.resolve(__e2eDir, '../src/__tests__/fixtures/sprites/bowser/input.gif');
+  const bowserBytes = readFileSync(bowserPath);
+  const b64 = bowserBytes.toString('base64');
 
   await page.evaluate((data: string) => {
     const binary = atob(data);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     (window as any).__MOCK_READ_FILE_BYTES__ = bytes;
-    (window as any).__MOCK_DIALOG_RESULT__ = '/mock/sprites/Charlotte.png';
+    (window as any).__MOCK_DIALOG_RESULT__ = '/mock/sprites/Bowser.gif';
   }, b64);
 
   // --- Step A: create a smart-import mime ---------------------------------
@@ -556,7 +431,7 @@ test('smart-import mime can be edited via Smart Import and keeps its meta', asyn
   const mimeId = storedMimes[0].id;
 
   // --- Step C: click edit → Smart Import should re-open --------------------
-  // Point the FS mock at the same Charlotte bytes for source sheet re-read
+  // Point the FS mock at the same Bowser bytes for source sheet re-read
   await page.evaluate((data: string) => {
     const binary = atob(data);
     const bytes = new Uint8Array(binary.length);
@@ -673,76 +548,145 @@ test('imported .animime mime (no smart meta) opens Manual editor on edit', async
 // ---------------------------------------------------------------------------
 // 14. Export Charlotte as .animime file
 // ---------------------------------------------------------------------------
-test('export Charlotte mime as .animime file', async ({ page }) => {
+test('Bowser SmartImport → export → import roundtrip preserves smartImportMeta', async ({ page }) => {
   await loadWithMock(page, '/settings.html');
 
-  const mimeId = 'custom-1776007930810';
-  const charlotte = {
-    id: mimeId,
-    name: 'Charlotte',
-    sprites: {
-      idle:          { fileName: `${mimeId}-idle.png`,          frames: 12 },
-      busy:          { fileName: `${mimeId}-busy.png`,          frames: 38 },
-      service:       { fileName: `${mimeId}-service.png`,       frames: 11 },
-      disconnected:  { fileName: `${mimeId}-disconnected.png`,  frames: 7 },
-      searching:     { fileName: `${mimeId}-searching.png`,     frames: 8 },
-      initializing:  { fileName: `${mimeId}-initializing.png`,  frames: 5 },
-      visiting:      { fileName: `${mimeId}-visiting.png`,      frames: 24 },
-    },
-  };
+  // --- Step A: SmartImport Bowser from fixture -------------------------------
+  const bowserPath = path.resolve(__e2eDir, '../src/__tests__/fixtures/sprites/bowser/input.gif');
+  const b64 = readFileSync(bowserPath).toString('base64');
 
-  // Load real Charlotte sprite PNGs and inject as mock file map
-  const spritesDir = path.resolve(
-    os.homedir(),
-    'Library/Application Support/com.vietnguyenwsilentium.ani-mime/custom-sprites',
-  );
-  const fileMap: Record<string, string> = {};
-  for (const [status, info] of Object.entries(charlotte.sprites)) {
-    const filePath = path.join(spritesDir, (info as any).fileName);
-    fileMap[(info as any).fileName] = readFileSync(filePath).toString('base64');
-  }
+  await page.evaluate((data: string) => {
+    const binary = atob(data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    (window as any).__MOCK_READ_FILE_BYTES__ = bytes;
+    (window as any).__MOCK_DIALOG_RESULT__ = '/mock/sprites/Bowser.gif';
+  }, b64);
 
-  await page.evaluate(({ fileMap, mimeId }) => {
-    // Inject per-file read map (base64 → Uint8Array)
-    const map: Record<string, Uint8Array> = {};
-    for (const [name, b64] of Object.entries(fileMap)) {
-      const binary = atob(b64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      map[name] = bytes;
-    }
-    (window as any).__MOCK_READ_FILE_MAP__ = map;
-
-    // Mock save dialog to return a path
-    (window as any).__MOCK_SAVE_DIALOG_RESULT__ = `/mock/export/Charlotte.animime`;
-  }, { fileMap, mimeId });
-
-  // Navigate to Mime tab
   await page.click('.sidebar-item:nth-child(2)');
   await expect(page.locator('.settings-title')).toHaveText('Mime');
+  await page.click('.pet-card.add-card:has-text("Import Sheet")');
 
-  // Inject Charlotte into custom mimes
-  await page.evaluate((data) => {
-    (window as any).__TEST_EMIT__('custom-mimes-changed', [data]);
-  }, charlotte);
+  const frameAssign = page.locator('.smart-import-frame-assign');
+  await expect(frameAssign.first()).toBeVisible();
+  await expect(frameAssign).toHaveCount(7);
 
-  // Charlotte should appear in the custom section
-  await expect(page.locator('.pet-card-wrapper .pet-name', { hasText: 'Charlotte' })).toBeVisible();
+  // Verify name is auto-filled from filename
+  const nameInput = page.locator('.smart-import .settings-input');
+  await expect(nameInput).toHaveValue('Bowser');
 
-  // Hover to reveal export button, then click it
-  const charlotteWrapper = page.locator('.pet-card-wrapper', {
-    has: page.locator('.pet-name', { hasText: 'Charlotte' }),
+  // Read detected frame count so we can assign explicit ranges
+  const framesInfo = page.locator('.smart-import-frames-info');
+  await expect(framesInfo).toContainText('detected');
+  const totalFrames = await framesInfo.evaluate((el) => {
+    const match = el.textContent?.match(/(\d+)\s+detected/);
+    return match ? parseInt(match[1]) : 0;
   });
-  await charlotteWrapper.hover();
+  expect(totalFrames).toBeGreaterThan(48); // Bowser sheet has many frames
+
+  // Set frame ranges matching the real Bowser export
+  const statusOrder = ['idle', 'busy', 'service', 'disconnected', 'searching', 'initializing', 'visiting'];
+  const frameRanges: Record<string, string> = {
+    idle: '1-34',
+    busy: '68-128,128,128,128,128,128,128,128,128,129',
+    service: '56-64,61,65-67,61-56',
+    disconnected: '141-158,130-141',
+    searching: '34-55',
+    initializing: '160-163',
+    visiting: '164-196',
+  };
+  const expectedCounts: Record<string, number> = {
+    idle: 34, busy: 70, service: 19, disconnected: 30,
+    searching: 22, initializing: 4, visiting: 33,
+  };
+  const frameInputs = page.locator('.smart-import-frame-input');
+  for (let i = 0; i < statusOrder.length; i++) {
+    const input = frameInputs.nth(i);
+    await input.clear();
+    await input.fill(frameRanges[statusOrder[i]]);
+    await input.blur();
+  }
+
+  // Verify each status shows the correct number of frame thumbnails with numbers
+  for (let i = 0; i < statusOrder.length; i++) {
+    const status = statusOrder[i];
+    const assign = frameAssign.nth(i);
+    const thumbs = assign.locator('.smart-import-frame-thumb-item');
+    const nums = assign.locator('.smart-import-frame-num');
+    await expect(thumbs).toHaveCount(expectedCounts[status]);
+    await expect(nums).toHaveCount(expectedCounts[status]);
+  }
+
+  // Verify first frame number for idle is "1"
+  const idleFirstNum = frameAssign.first().locator('.smart-import-frame-num').first();
+  await expect(idleFirstNum).toHaveText('1');
+
+  // Save the mime
+  const saveBtn = page.locator('.creator-btn.save');
+  await expect(saveBtn).toBeEnabled();
+  await saveBtn.click();
+  await expect(page.locator('.smart-import')).not.toBeVisible();
+
+  // --- Step B: Verify the created mime has smartImportMeta -------------------
+  const storedAfterCreate = await page.evaluate(async () => {
+    const rid = await (window as any).__TAURI_INTERNALS__.invoke(
+      'plugin:store|load', { path: 'settings.json' }
+    );
+    const val = await (window as any).__TAURI_INTERNALS__.invoke(
+      'plugin:store|get', { rid, key: 'customMimes' }
+    );
+    return val ? val[0] : null;
+  });
+  expect(storedAfterCreate).toHaveLength(1);
+  const createdMime = storedAfterCreate[0];
+  expect(createdMime.name).toBe('Bowser');
+  expect(createdMime.smartImportMeta).toBeDefined();
+  expect(createdMime.smartImportMeta.frameInputs.idle).toBe('1-34');
+  expect(createdMime.smartImportMeta.frameInputs.busy).toBe('68-128,128,128,128,128,128,128,128,128,129');
+  const mimeId = createdMime.id;
+
+  // Capture written files (strips + source sheet) for export reads
+  const writtenFiles = await page.evaluate(() => {
+    const files = (window as any).__MOCK_WRITTEN_FILES__ || [];
+    const result: Record<string, Uint8Array> = {};
+    for (const f of files) {
+      if (f.path) {
+        // Extract filename from path
+        const name = f.path.split('/').pop();
+        const raw = f.contents;
+        result[name] = raw instanceof Uint8Array ? raw : new Uint8Array(Object.values(raw) as number[]);
+      }
+    }
+    return result;
+  });
+
+  // --- Step C: Export the Bowser mime ----------------------------------------
+  // Set up read file map so export can read the strip PNGs + source sheet
+  await page.evaluate((files: Record<string, Uint8Array>) => {
+    const map: Record<string, Uint8Array> = {};
+    for (const [name, bytes] of Object.entries(files)) {
+      const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(Object.values(bytes) as number[]);
+      map[name] = arr;
+    }
+    (window as any).__MOCK_READ_FILE_MAP__ = map;
+    (window as any).__MOCK_SAVE_DIALOG_RESULT__ = '/mock/export/Bowser.animime';
+    (window as any).__MOCK_WRITTEN_FILES__ = []; // Clear to isolate export write
+  }, writtenFiles);
+
+  // Hover to reveal export button, then click
+  const bowserWrapper = page.locator('.pet-card-wrapper', {
+    has: page.locator('.pet-name', { hasText: 'Bowser' }),
+  });
+  await bowserWrapper.hover();
   await page.click(`[data-testid="export-mime-${mimeId}"]`);
 
-  // Wait for export to complete — writeFile should have been called
+  // Wait for export to write the .animime file
   await page.waitForFunction(() => {
     const files = (window as any).__MOCK_WRITTEN_FILES__;
     return files && files.length > 0;
   });
 
-  // Read and verify the exported .animime data
+  // Read the exported .animime JSON
   const exported = await page.evaluate(() => {
     const files = (window as any).__MOCK_WRITTEN_FILES__;
     const last = files[files.length - 1];
@@ -752,136 +696,152 @@ test('export Charlotte mime as .animime file', async ({ page }) => {
     return { path: last.path, json: JSON.parse(text) };
   });
 
-  // Verify export path
-  expect(exported.path).toContain('Charlotte.animime');
-
   // Verify .animime structure
+  expect(exported.path).toContain('Bowser.animime');
   expect(exported.json.version).toBe(1);
-  expect(exported.json.name).toBe('Charlotte');
+  expect(exported.json.name).toBe('Bowser');
 
-  // Verify all 7 statuses with correct frame counts
-  const expectedFrames: Record<string, number> = {
-    idle: 12, busy: 38, service: 11, disconnected: 7,
-    searching: 8, initializing: 5, visiting: 24,
-  };
-  for (const [status, frames] of Object.entries(expectedFrames)) {
+  // Verify all 7 statuses have non-empty sprite data
+  for (const status of statusOrder) {
     expect(exported.json.sprites[status]).toBeDefined();
-    expect(exported.json.sprites[status].frames).toBe(frames);
-    // Each sprite should have non-empty base64 data
     expect(exported.json.sprites[status].data.length).toBeGreaterThan(0);
   }
-});
+  // Verify frame counts match our explicit ranges
+  expect(exported.json.sprites.idle.frames).toBe(34);
+  expect(exported.json.sprites.busy.frames).toBe(70);
+  expect(exported.json.sprites.service.frames).toBe(19);
+  expect(exported.json.sprites.disconnected.frames).toBe(30);
+  expect(exported.json.sprites.searching.frames).toBe(22);
+  expect(exported.json.sprites.initializing.frames).toBe(4);
+  expect(exported.json.sprites.visiting.frames).toBe(33);
 
-// ---------------------------------------------------------------------------
-// 15. Delete Charlotte custom mime
-// ---------------------------------------------------------------------------
-test('delete Charlotte custom mime', async ({ page }) => {
-  await loadWithMock(page, '/settings.html');
+  // Verify smartImportMeta is present in export
+  expect(exported.json.smartImportMeta).toBeDefined();
+  expect(exported.json.smartImportMeta.sourceSheet.length).toBeGreaterThan(0);
+  expect(exported.json.smartImportMeta.frameInputs.idle).toBe('1-34');
+  expect(exported.json.smartImportMeta.frameInputs.visiting).toBe('164-196');
 
-  const mimeId = 'custom-1776007930810';
-  const charlotte = {
-    id: mimeId,
-    name: 'Charlotte',
-    sprites: {
-      idle:          { fileName: `${mimeId}-idle.png`,          frames: 12 },
-      busy:          { fileName: `${mimeId}-busy.png`,          frames: 38 },
-      service:       { fileName: `${mimeId}-service.png`,       frames: 11 },
-      disconnected:  { fileName: `${mimeId}-disconnected.png`,  frames: 7 },
-      searching:     { fileName: `${mimeId}-searching.png`,     frames: 8 },
-      initializing:  { fileName: `${mimeId}-initializing.png`,  frames: 5 },
-      visiting:      { fileName: `${mimeId}-visiting.png`,      frames: 24 },
-    },
-  };
-
-  // Navigate to Mime tab
-  await page.click('.sidebar-item:nth-child(2)');
-  await expect(page.locator('.settings-title')).toHaveText('Mime');
-
-  // Inject Charlotte into custom mimes
-  await page.evaluate((data) => {
-    (window as any).__TEST_EMIT__('custom-mimes-changed', [data]);
-  }, charlotte);
-  await expect(page.locator('.pet-card-wrapper .pet-name', { hasText: 'Charlotte' })).toBeVisible();
-
-  // Hover to reveal delete button, then click it
-  const charlotteWrapper = page.locator('.pet-card-wrapper', {
-    has: page.locator('.pet-name', { hasText: 'Charlotte' }),
-  });
-  await charlotteWrapper.hover();
+  // --- Step D: Import the .animime file into a fresh session -----------------
+  // Delete the existing Bowser mime first
+  await bowserWrapper.hover();
   await page.click(`[data-testid="delete-mime-${mimeId}"]`);
+  await expect(page.locator('.pet-card-wrapper .pet-name', { hasText: 'Bowser' })).not.toBeVisible();
 
-  // Charlotte should be gone
-  await expect(page.locator('.pet-card-wrapper .pet-name', { hasText: 'Charlotte' })).not.toBeVisible();
-});
-
-// ---------------------------------------------------------------------------
-// 16. Import Charlotte from .animime file
-// ---------------------------------------------------------------------------
-test('import Charlotte from .animime file', async ({ page }) => {
-  await loadWithMock(page, '/settings.html');
-
-  const charlotte = {
-    idle:          { frames: 12 },
-    busy:          { frames: 38 },
-    service:       { frames: 11 },
-    disconnected:  { frames: 7 },
-    searching:     { frames: 8 },
-    initializing:  { frames: 5 },
-    visiting:      { frames: 24 },
-  };
-
-  // Build .animime payload from real Charlotte sprite files
-  const spritesDir = path.resolve(
-    os.homedir(),
-    'Library/Application Support/com.vietnguyenwsilentium.ani-mime/custom-sprites',
-  );
-  const mimeId = 'custom-1776007930810';
-  const animimeSprites: Record<string, { frames: number; data: string }> = {};
-  for (const [status, info] of Object.entries(charlotte)) {
-    const fileName = `${mimeId}-${status}.png`;
-    const b64 = readFileSync(path.join(spritesDir, fileName)).toString('base64');
-    animimeSprites[status] = { frames: info.frames, data: b64 };
-  }
-  const animimePayload = JSON.stringify({ version: 1, name: 'Charlotte', sprites: animimeSprites });
-
-  // Set up mocks: dialog returns .animime path, readFile returns the payload bytes
+  // Set up import mocks: inject the exported .animime bytes
+  const animimePayload = JSON.stringify(exported.json);
   await page.evaluate((payload: string) => {
-    (window as any).__MOCK_DIALOG_RESULT__ = '/mock/import/Charlotte.animime';
+    (window as any).__MOCK_DIALOG_RESULT__ = '/mock/import/Bowser.animime';
     const encoder = new TextEncoder();
     (window as any).__MOCK_READ_FILE_BYTES__ = encoder.encode(payload);
+    (window as any).__MOCK_WRITTEN_FILES__ = [];
   }, animimePayload);
-
-  // Navigate to Mime tab
-  await page.click('.sidebar-item:nth-child(2)');
-  await expect(page.locator('.settings-title')).toHaveText('Mime');
 
   // Click import .animime button
   await page.click('[data-testid="import-animime-btn"]');
 
-  // Charlotte should appear in the mime list
-  await expect(page.locator('.pet-card-wrapper .pet-name', { hasText: 'Charlotte' })).toBeVisible();
+  // Bowser should appear in the mime list
+  await expect(page.locator('.pet-card-wrapper .pet-name', { hasText: 'Bowser' })).toBeVisible();
 
-  // Verify the imported mime was stored with correct frame counts
-  const storedMimes = await page.evaluate(() => {
-    return new Promise<any>((resolve) => {
-      (window as any).__TAURI_INTERNALS__.invoke('plugin:store|load', { path: 'settings.json' })
-        .then((rid: number) => (window as any).__TAURI_INTERNALS__.invoke('plugin:store|get', { rid, key: 'customMimes' }))
-        .then((val: any) => resolve(val ? val[0] : null));
-    });
+  // --- Step E: Verify the imported mime has smartImportMeta ------------------
+  const storedAfterImport = await page.evaluate(async () => {
+    const rid = await (window as any).__TAURI_INTERNALS__.invoke(
+      'plugin:store|load', { path: 'settings.json' }
+    );
+    const val = await (window as any).__TAURI_INTERNALS__.invoke(
+      'plugin:store|get', { rid, key: 'customMimes' }
+    );
+    return val ? val[0] : null;
   });
+  expect(storedAfterImport).toHaveLength(1);
+  const importedMime = storedAfterImport[0];
+  expect(importedMime.name).toBe('Bowser');
 
-  expect(storedMimes).toBeTruthy();
-  expect(storedMimes.length).toBe(1);
-  expect(storedMimes[0].name).toBe('Charlotte');
+  // Verify frame counts survived the roundtrip
+  expect(importedMime.sprites.idle.frames).toBe(34);
+  expect(importedMime.sprites.busy.frames).toBe(70);
+  expect(importedMime.sprites.service.frames).toBe(19);
+  expect(importedMime.sprites.disconnected.frames).toBe(30);
+  expect(importedMime.sprites.searching.frames).toBe(22);
+  expect(importedMime.sprites.initializing.frames).toBe(4);
+  expect(importedMime.sprites.visiting.frames).toBe(33);
 
-  const expectedFrames: Record<string, number> = {
-    idle: 12, busy: 38, service: 11, disconnected: 7,
-    searching: 8, initializing: 5, visiting: 24,
-  };
-  for (const [status, frames] of Object.entries(expectedFrames)) {
-    expect(storedMimes[0].sprites[status].frames).toBe(frames);
-  }
+  // Verify smartImportMeta survived the roundtrip
+  expect(importedMime.smartImportMeta).toBeDefined();
+  expect(importedMime.smartImportMeta.sheetFileName).toMatch(/-source\.png$/);
+  expect(importedMime.smartImportMeta.frameInputs.idle).toBe('1-34');
+  expect(importedMime.smartImportMeta.frameInputs.busy).toBe('68-128,128,128,128,128,128,128,128,128,129');
+  expect(importedMime.smartImportMeta.frameInputs.visiting).toBe('164-196');
+
+  // Verify source sheet was written to disk during import
+  const wroteSource = await page.evaluate(() => {
+    const files = (window as any).__MOCK_WRITTEN_FILES__ || [];
+    return files.some((f: any) => /-source\.png$/.test(f.path ?? ''));
+  });
+  expect(wroteSource).toBe(true);
+
+  // --- Step F: Verify imported Bowser renders on main page at tiny scale ----
+  const importedId = importedMime.id;
+  await page.addInitScript(tauriMockScript);
+  await page.goto('/');
+  await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
+
+  await page.evaluate((id: string) => {
+    const emit = (window as any).__TEST_EMIT__;
+    emit('custom-mimes-changed', [{
+      id,
+      name: 'Bowser',
+      sprites: {
+        idle:          { fileName: `${id}-idle.png`,          frames: 34 },
+        busy:          { fileName: `${id}-busy.png`,          frames: 70 },
+        service:       { fileName: `${id}-service.png`,       frames: 19 },
+        disconnected:  { fileName: `${id}-disconnected.png`,  frames: 30 },
+        searching:     { fileName: `${id}-searching.png`,     frames: 22 },
+        initializing:  { fileName: `${id}-initializing.png`,  frames: 4 },
+        visiting:      { fileName: `${id}-visiting.png`,      frames: 33 },
+      },
+    }]);
+    emit('pet-changed', id);
+    emit('scale-changed', 0.5);
+  }, importedId);
+
+  const sprite = page.locator('[data-testid="mascot-sprite"]');
+  await expect(sprite).toBeVisible();
+  // At scale 0.5, sprite should be 64×64 (128 * 0.5)
+  await expect(sprite).toHaveCSS('width', '64px');
+  await expect(sprite).toHaveCSS('height', '64px');
+
+  // --- Step G: Delete the imported Bowser mime ------------------------------
+  await page.addInitScript(tauriMockScript);
+  await page.goto('/settings.html');
+  await page.click('.sidebar-item:nth-child(2)');
+  await expect(page.locator('.settings-title')).toHaveText('Mime');
+
+  // Re-inject the mime so it appears in the list
+  await page.evaluate((id: string) => {
+    (window as any).__TEST_EMIT__('custom-mimes-changed', [{
+      id,
+      name: 'Bowser',
+      sprites: {
+        idle:          { fileName: `${id}-idle.png`,          frames: 34 },
+        busy:          { fileName: `${id}-busy.png`,          frames: 70 },
+        service:       { fileName: `${id}-service.png`,       frames: 19 },
+        disconnected:  { fileName: `${id}-disconnected.png`,  frames: 30 },
+        searching:     { fileName: `${id}-searching.png`,     frames: 22 },
+        initializing:  { fileName: `${id}-initializing.png`,  frames: 4 },
+        visiting:      { fileName: `${id}-visiting.png`,      frames: 33 },
+      },
+    }]);
+  }, importedId);
+  await expect(page.locator('.pet-card-wrapper .pet-name', { hasText: 'Bowser' })).toBeVisible();
+
+  const deleteWrapper = page.locator('.pet-card-wrapper', {
+    has: page.locator('.pet-name', { hasText: 'Bowser' }),
+  });
+  await deleteWrapper.hover();
+  await page.click(`[data-testid="delete-mime-${importedId}"]`);
+  await expect(page.locator('.pet-card-wrapper .pet-name', { hasText: 'Bowser' })).not.toBeVisible();
 });
+
 
 // ---------------------------------------------------------------------------
 // 17. Window auto-resizes to fit sprite content
