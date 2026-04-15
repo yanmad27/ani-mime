@@ -76,6 +76,7 @@ pub fn start_http_server(app_handle: tauri::AppHandle, app_state: Arc<Mutex<AppS
                             if url.contains("state=busy") {
                                 let cmd_type = get_query_param(&url, "type").unwrap_or("task");
                                 session.busy_type = cmd_type.to_string();
+                                session.just_finished = false;
 
                                 if cmd_type == "service" {
                                     session.ui_state = "service".to_string();
@@ -102,6 +103,9 @@ pub fn start_http_server(app_handle: tauri::AppHandle, app_state: Arc<Mutex<AppS
                                 session.ui_state = "idle".to_string();
                                 session.service_since = 0;
                                 session.busy_since = 0;
+                                // Mark the row so the UI can show a green checkmark
+                                // until this session goes busy again.
+                                session.just_finished = true;
                                 // Drop session borrow before accessing st fields
                                 drop(session);
 

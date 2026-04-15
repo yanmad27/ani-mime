@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { Status } from "../types/status";
 import { fetchSessions, type SessionInfo } from "../hooks/useSessions";
 import { useSessionList } from "../hooks/useSessionList";
@@ -90,7 +91,7 @@ interface Group {
 }
 
 function groupSessions(sessions: SessionInfo[], home?: string): Group[] {
-  // Find pid=0 (Claude shared virtual) — may exist from Claude Code hooks.
+  // Find pid=0 (legacy Claude shared virtual) — only used as a fallback bucket.
   const claudeVirtual = sessions.find((s) => s.pid === 0);
   const anyShellHasClaude = sessions.some((s) => s.pid !== 0 && s.has_claude);
 
@@ -99,7 +100,8 @@ function groupSessions(sessions: SessionInfo[], home?: string): Group[] {
   // instead of vanishing.
   const byKey = new Map<string, { pwd: string; list: SessionInfo[] }>();
   for (const s of sessions) {
-    if (s.pid === 0) continue;
+    if (s.pid === 0) continue;       // legacy shared virtual
+    if (s.is_claude_proc) continue;  // claude process — represented by its parent shell
     const key = s.pwd || s.title || String(s.pid);
     if (!byKey.has(key)) byKey.set(key, { pwd: s.pwd, list: [] });
     byKey.get(key)!.list.push(s);
@@ -152,6 +154,50 @@ function detectHome(sessions: SessionInfo[]): string | undefined {
   return undefined;
 }
 
+/** The watchdog auto-flips `ui_state` from "service" back to "idle" after 2
+ *  seconds (so the global pill doesn't lock blue while a dev server runs).
+ *  But `busy_type` stays "service" until precmd fires — which long-running
+ *  servers never do. So in the dropdown we trust busy_type and re-assert the
+ *  service color for the whole lifetime of the dev server. */
+function reflectActiveServices(sessions: SessionInfo[]): SessionInfo[] {
+  return sessions.map((s) =>
+    s.busy_type === "service" && s.ui_state === "idle"
+      ? { ...s, ui_state: "service" }
+      : s,
+  );
+}
+
+/** Claude Code's busy/idle state lives on a separate session — either the
+ *  per-claude PID (after the pid=$PPID hook migration) or the legacy shared
+ *  pid=0. Overlay that state onto each shell with has_claude=true so the
+ *  dropdown dot reflects what that specific Claude is doing.
+ *
+ *  Each claude-hosting shell gets the state of ITS OWN claude_pid session, so
+ *  two Claude tabs no longer turn red together when only one is busy. */
+function overlayClaudeState(sessions: SessionInfo[]): SessionInfo[] {
+  const sessionByPid = new Map<number, SessionInfo>();
+  for (const s of sessions) sessionByPid.set(s.pid, s);
+
+  return sessions.map((s) => {
+    if (!s.has_claude) return s;
+
+    // Prefer the dedicated per-claude PID; fall back to legacy pid=0.
+    const claudeSession =
+      (s.claude_pid != null && sessionByPid.get(s.claude_pid)) ||
+      sessionByPid.get(0);
+
+    if (!claudeSession) return s;
+    const claudeP = statePriority[claudeSession.ui_state] ?? 0;
+    const ownP = statePriority[s.ui_state] ?? 0;
+    // Also propagate just_finished — when claude completes a tool call we
+    // want the parent shell row to flash the green checkmark.
+    const just_finished = s.just_finished || claudeSession.just_finished;
+    return ownP >= claudeP
+      ? { ...s, just_finished }
+      : { ...s, ui_state: claudeSession.ui_state, just_finished };
+  });
+}
+
 export function StatusPill({ status, glow }: StatusPillProps) {
   const [open, setOpen] = useState(false);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -167,8 +213,8 @@ export function StatusPill({ status, glow }: StatusPillProps) {
       return;
     }
     const list = await fetchSessions();
-    const home = detectHome(list);
-    setGroups(groupSessions(list, home));
+    const overlaid = overlayClaudeState(reflectActiveServices(list));
+    setGroups(groupSessions(overlaid, detectHome(overlaid)));
     setOpen(true);
   };
 
@@ -176,6 +222,37 @@ export function StatusPill({ status, glow }: StatusPillProps) {
   useEffect(() => {
     if (!sessionListEnabled && open) setOpen(false);
   }, [sessionListEnabled, open]);
+
+  // Live updates while the dropdown is open. Hybrid strategy:
+  //   • Listen to `status-changed` Tauri events for instant busy/idle reflection
+  //   • Plus a 3s fallback poll for proc_scan-driven changes (new tabs, cd,
+  //     fg_cmd updates) that don't fire status-changed
+  // Costs ~5ms per refresh; total well under 1Hz average while open.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+
+    const refresh = async () => {
+      const list = await fetchSessions();
+      if (cancelled) return;
+      const overlaid = overlayClaudeState(reflectActiveServices(list));
+      setGroups(groupSessions(overlaid, detectHome(overlaid)));
+    };
+
+    // Subscribe to backend state-change events.
+    const unlistenP = listen("status-changed", () => {
+      void refresh();
+    });
+
+    // Fallback poll covers OS-scan changes that don't emit status-changed.
+    const id = setInterval(refresh, 3000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      unlistenP.then((fn) => fn());
+    };
+  }, [open]);
 
   // Close on outside click or Escape.
   useEffect(() => {
@@ -267,6 +344,15 @@ export function StatusPill({ status, glow }: StatusPillProps) {
                             />
                           )}
                         </span>
+                        {s.just_finished && (
+                          <span
+                            className="session-child-check"
+                            aria-label="Just finished"
+                            title="Just finished"
+                          >
+                            ✓
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>

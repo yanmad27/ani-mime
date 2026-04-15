@@ -553,6 +553,15 @@ fn reconcile(app_state: &Arc<Mutex<AppState>>) {
         by_pid.insert(p.pid, p);
     }
 
+    // All claude processes seen this scan (any process that passes is_claude).
+    // Used for two things: marking the corresponding sessions as claude-proc,
+    // and shielding them from zombie cleanup.
+    let claude_pids: std::collections::HashSet<u32> = procs
+        .iter()
+        .filter(|p| is_claude(p))
+        .map(|p| p.pid)
+        .collect();
+
     // Map: shell_pid -> claude_pid (for every claude, find its ancestor shell).
     let mut shell_has_claude: HashMap<u32, u32> = HashMap::new();
     for p in &procs {
@@ -581,17 +590,20 @@ fn reconcile(app_state: &Arc<Mutex<AppState>>) {
         .filter(|p| is_user_terminal(p, &by_pid))
         .collect();
 
-
     let now = crate::helpers::now_secs();
     let mut st = app_state.lock().unwrap();
 
-    // (1) Drop zombie sessions: in state but not a live user-terminal.
+    // (1) Drop zombie sessions: in state but not a live user-terminal AND not
+    //     an alive claude process. (Claude sessions are created by hooks
+    //     against the claude PID — they're legitimate even though not shells.)
     let zombies: Vec<u32> = st
         .sessions
         .keys()
         .copied()
         .filter(|&pid| {
-            pid != 0 && !live_terminals.iter().any(|t| t.pid == pid)
+            pid != 0
+                && !live_terminals.iter().any(|t| t.pid == pid)
+                && !claude_pids.contains(&pid)
         })
         .collect();
     for pid in &zombies {
@@ -625,6 +637,12 @@ fn reconcile(app_state: &Arc<Mutex<AppState>>) {
         // Claude attachment (set/cleared each scan based on current state).
         entry.has_claude = shell_has_claude.contains_key(&t.pid);
         entry.claude_pid = shell_has_claude.get(&t.pid).copied();
+    }
+
+    // (3) Mark sessions whose PID is itself a claude process. The UI hides
+    //     these so they don't appear as standalone "PID 17258" rows.
+    for (pid, session) in st.sessions.iter_mut() {
+        session.is_claude_proc = claude_pids.contains(pid);
     }
 }
 
