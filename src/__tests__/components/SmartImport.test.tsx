@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { SmartImport } from "../../components/SmartImport";
+import { SmartImport, serializeFrames } from "../../components/SmartImport";
 
 // Stub the sprite-sheet processor so the test doesn't need a real canvas pipeline
 vi.mock("../../utils/spriteSheetProcessor", () => ({
@@ -27,5 +27,23 @@ describe("SmartImport", () => {
       />
     );
     expect(screen.getByTestId("smart-import-pick")).toBeInTheDocument();
+  });
+});
+
+describe("serializeFrames", () => {
+  it("returns empty string for empty array", () => {
+    expect(serializeFrames([])).toBe("");
+  });
+  it("collapses ascending runs", () => {
+    expect(serializeFrames([1, 2, 3, 4])).toBe("1-4");
+  });
+  it("preserves descending runs as a-b", () => {
+    expect(serializeFrames([3, 2, 1])).toBe("3-1");
+  });
+  it("joins mixed singletons and runs", () => {
+    expect(serializeFrames([1, 3, 4, 5, 7])).toBe("1,3-5,7");
+  });
+  it("keeps duplicates as singletons", () => {
+    expect(serializeFrames([2, 2, 3])).toBe("2,2,3");
   });
 });

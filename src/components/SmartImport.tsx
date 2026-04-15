@@ -53,7 +53,7 @@ const STATUS_DESCRIPTIONS: Record<Status, string> = {
 };
 
 /** Parse "1-5" or "1,2,3,5,6" into 0-based indices. Preserves order and duplicates. Ranges are directional: 3-1 → 3,2,1. */
-function parseFrameInput(input: string, maxFrame: number): number[] {
+export function parseFrameInput(input: string, maxFrame: number): number[] {
   const indices: number[] = [];
   for (const part of input.split(",")) {
     const trimmed = part.trim();
@@ -78,6 +78,30 @@ function parseFrameInput(input: string, maxFrame: number): number[] {
     }
   }
   return indices;
+}
+
+/** Inverse of parseFrameInput. Collapses consecutive runs; preserves direction. */
+export function serializeFrames(nums: number[]): string {
+  if (nums.length === 0) return "";
+  const parts: string[] = [];
+  let i = 0;
+  while (i < nums.length) {
+    let j = i;
+    const prevDup = i > 0 && nums[i - 1] === nums[i];
+    const step = prevDup
+      ? 0
+      : nums[i + 1] === nums[i] + 1
+      ? 1
+      : nums[i + 1] === nums[i] - 1
+      ? -1
+      : 0;
+    if (step !== 0) {
+      while (j + 1 < nums.length && nums[j + 1] === nums[j] + step) j++;
+    }
+    parts.push(j === i ? `${nums[i]}` : `${nums[i]}-${nums[j]}`);
+    i = j + 1;
+  }
+  return parts.join(",");
 }
 
 export function SmartImport({
