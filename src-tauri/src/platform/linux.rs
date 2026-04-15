@@ -34,11 +34,16 @@ pub fn setup_main_window(app: &tauri::App) {
     // WSLg: GTK/X11 z-order hints live inside the Linux compositor and never cross
     // the RDP/RAIL bridge into Windows DWM.  The only fix is calling Windows'
     // SetWindowPos(HWND_TOPMOST) via PowerShell, which WSL2 can invoke directly.
+    //
+    // A one-shot call at startup is not enough: WSLg resets WS_EX_TOPMOST every
+    // time another window gains focus.  We re-assert it on every Focused(false)
+    // event so the pet pops back on top within ~150 ms of losing focus.
     if is_wsl() {
         crate::app_log!("[platform] WSLg detected — will set HWND_TOPMOST via PowerShell");
+
+        // Initial: wait for WSLg RAIL to register the HWND with Windows DWM.
         std::thread::spawn(|| {
-            // Retry: the WSLg RAIL HWND may not be registered in DWM immediately.
-            for attempt in 1u8..=8 {
+            for attempt in 1u8..=5 {
                 std::thread::sleep(std::time::Duration::from_millis(
                     if attempt == 1 { 2000 } else { 1500 },
                 ));
@@ -47,7 +52,19 @@ pub fn setup_main_window(app: &tauri::App) {
                 }
                 crate::app_warn!("[platform] WSLg topmost attempt {} — not found yet", attempt);
             }
-            crate::app_error!("[platform] WSLg topmost: gave up after 8 attempts");
+            crate::app_error!("[platform] WSLg topmost: gave up after 5 attempts");
+        });
+
+        // Re-assert on every focus-lost: WSLg resets WS_EX_TOPMOST when another
+        // window gains focus, so we re-fire SetWindowPos(HWND_TOPMOST) each time.
+        window.on_window_event(|event| {
+            if let tauri::WindowEvent::Focused(false) = event {
+                std::thread::spawn(|| {
+                    // Brief delay so DWM finishes raising the other window first.
+                    std::thread::sleep(std::time::Duration::from_millis(150));
+                    apply_wsl_topmost("Ani-Mime");
+                });
+            }
         });
     }
 
