@@ -377,11 +377,30 @@ export function SmartImport({
                   </div>
                 </div>
                 {frameThumbs[status]?.length > 0 && (
-                  <div className="smart-import-frame-previews">
+                  <div
+                    className="smart-import-frame-previews"
+                    data-testid={`frame-list-${status}`}
+                  >
                     {frameThumbs[status].map((thumb, i) => (
-                      <div key={i} className="smart-import-frame-thumb-item">
+                      <div
+                        key={`${thumb.num}-${i}`}
+                        className="smart-import-frame-thumb-item"
+                        data-testid={`frame-chip-${status}-${thumb.num}`}
+                      >
                         <img src={thumb.src} alt={`Frame ${thumb.num}`} className="smart-import-frame-thumb" />
                         <span className="smart-import-frame-num">{thumb.num}</span>
+                        <button
+                          type="button"
+                          className="smart-import-frame-thumb-remove"
+                          aria-label={`Remove frame ${thumb.num}`}
+                          data-testid={`frame-remove-${status}-${thumb.num}`}
+                          onClick={() => {
+                            const next = frameThumbs[status].filter((_, idx) => idx !== i).map((t) => t.num);
+                            applyFramesChange(status, next);
+                          }}
+                        >
+                          ×
+                        </button>
                       </div>
                     ))}
                   </div>
