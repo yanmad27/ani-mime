@@ -822,6 +822,7 @@ export function Settings() {
                     { login: "thanh-dong", avatar: "https://avatars.githubusercontent.com/u/15724923?v=4" },
                     { login: "setnsail", avatar: "https://avatars.githubusercontent.com/u/213003653?v=4" },
                     { login: "QuangHo0911", avatar: "https://avatars.githubusercontent.com/u/207322672?v=4" },
+                    { login: "cuongtranba", avatar: "https://avatars.githubusercontent.com/u/4550606?v=4" },
                   ].map((c) => (
                     <a
                       key={c.login}
