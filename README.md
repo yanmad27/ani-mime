@@ -14,9 +14,9 @@
   <img src="https://img.shields.io/badge/Platform-macOS-000000?style=for-the-badge&logo=apple" alt="Platform">
 </p>
 
-<!-- <p align="center"> -->
-  <!-- <img src="docs/assets/demo.gif" width="960" alt="Ani-Mime Demo" /> -->
-<!-- </p> -->
+<p align="center">
+  <img src="docs/assets/demo-recording-2026-04-17.gif" width="960" alt="Ani-Mime Demo" />
+</p>
 
 ---
 
@@ -29,6 +29,57 @@ It also integrates with **Claude Code** — the dog knows when Claude is thinkin
 <p align="center">
   <img src="docs/assets/design.png" width="800" alt="Ani-Mime Mascot States" />
 </p>
+
+## Contributors
+
+Ani-Mime wouldn't be the same without these wonderful people. Thank you for your time, ideas, and code — you made this project better.
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/thnh-dng">
+        <img src="https://avatars.githubusercontent.com/u/213000297?v=4" width="80" height="80" alt="thnh-dng" />
+        <br />
+        <sub><b>thnh-dng</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/yanmad27">
+        <img src="https://avatars.githubusercontent.com/u/38394675?v=4" width="80" height="80" alt="yanmad27" />
+        <br />
+        <sub><b>yanmad27</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/thanh-dong">
+        <img src="https://avatars.githubusercontent.com/u/15724923?v=4" width="80" height="80" alt="thanh-dong" />
+        <br />
+        <sub><b>thanh-dong</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/setnsail">
+        <img src="https://avatars.githubusercontent.com/u/213003653?v=4" width="80" height="80" alt="setnsail" />
+        <br />
+        <sub><b>setnsail</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/QuangHo0911">
+        <img src="https://avatars.githubusercontent.com/u/207322672?v=4" width="80" height="80" alt="QuangHo0911" />
+        <br />
+        <sub><b>QuangHo0911</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/cuongtranba">
+        <img src="https://avatars.githubusercontent.com/u/4550606?v=4" width="80" height="80" alt="cuongtranba" />
+        <br />
+        <sub><b>cuongtranba</b></sub>
+      </a>
+    </td>
+  </tr>
+</table>
 
 ## Mascot States
 
@@ -59,22 +110,40 @@ It also integrates with **Claude Code** — the dog knows when Claude is thinkin
 - **Hide from Dock** — optional setting to remove the app from Dock and Cmd+Tab, running as a menu bar-only app
 - **Low Footprint** — Rust + Tauri, minimal CPU and RAM
 
+## Screenshots
+
+<table>
+  <tr>
+    <td><img src="docs/assets/settings-general.png" alt="General settings" width="300"></td>
+    <td><img src="docs/assets/settings-mime.png" alt="Customize your favorite Mime" width="300"></td>
+    <td><img src="docs/assets/shadow-clone.gif" alt="Shadow Clone feature" width="300"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>General settings</strong></td>
+    <td align="center"><strong>Customize your favorite Mime</strong></td>
+    <td align="center"><strong>Shadow Clone feature</strong></td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/menu-bar.png" alt="Show on macOS menu bar" width="300"></td>
+    <td><img src="docs/assets/import-export.png" alt="One-click import and export of custom Mimes" width="300"></td>
+    <td></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Show on menu bar</strong></td>
+    <td align="center"><strong>One-click import &amp; export your Mime</strong></td>
+    <td></td>
+  </tr>
+</table>
+
 ---
 
 ## Session List & Click-to-Focus
 
 Click the status pill to open a dropdown listing every open terminal, grouped by working directory:
 
-```
-~/dev/ani-mime                 2
-    🤖 claude                     idle
-    bun                           service
-
-~/dev/docliq-admin
-    🤖 claude                     idle
-```
-
-Sessions come from two sources merged together: **shell hooks** (event-driven busy / idle / service state) and a **2-second libproc scan** of the OS process table (paths, tty, foreground command, and which tabs have `claude` running inside).
+<p align="center">
+  <img src="docs/assets/session-list.png" width="400" alt="Session list dropdown grouped by project" />
+</p>
 
 **Click any row** and Ani-Mime brings that terminal to the front. For apps with scripting support it jumps to the specific tab; for the rest it just activates the app. The walk up the process tree uses `pidpath` + a `ps`-based ppid map, so it works even across root-owned ancestors like `/usr/bin/login`.
 
