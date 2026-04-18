@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.16.2] - 2026-04-18
+
+### Fixed
+- **Claude Code session detection for the new `claude.exe` binary** — newer Claude Code releases ship a compiled single-file binary named `claude.exe` (with `claude` as a PATH symlink). `proc_scan` was still matching only `"claude"`, so on the owning shell's row the claude icon disappeared, the label showed `"claude.exe"`, and the claude session was dropped as a zombie every 2s — making the pet's busy/idle mirror flap instead of sticking on busy while Claude worked. `is_claude()` now matches both `"claude"` and `"claude.exe"`.
+- **`ssh` classified as a service** — long-running SSH sessions were stuck on `busy` for the full connection, keeping the pet visually working the entire time. `ssh` now flashes service then returns to idle, matching `dev` / `serve` / `watch` etc.
+
+### Added
+- **`DEV` badge over the mascot** when running via `bun run tauri dev`. The badge is driven by Vite's build-time `import.meta.env.DEV` flag, so it tree-shakes out of release builds — zero visual change for installed-app users. Makes it easy to tell the running dev build apart from the installed `/Applications/Ani-Mime.app` at a glance.
+
 ## [0.16.1] - 2026-04-15
 
 ### Added
