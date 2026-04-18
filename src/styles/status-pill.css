@@ -109,7 +109,7 @@ button.session-group-head {
   background: none;
   border: none;
   color: inherit;
-  font: inherit;
+  font-family: inherit;
   text-align: left;
   cursor: pointer;
   border-radius: 4px;
