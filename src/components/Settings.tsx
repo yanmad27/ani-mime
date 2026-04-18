@@ -8,6 +8,7 @@ import { useGlow, type GlowMode } from "../hooks/useGlow";
 import { useNickname } from "../hooks/useNickname";
 import { useAutoStart } from "../hooks/useAutoStart";
 import { useAutoUpdate } from "../hooks/useAutoUpdate";
+import { useAutoInstall } from "../hooks/useAutoInstall";
 import { useDockVisible } from "../hooks/useDockVisible";
 import { useTrayVisible } from "../hooks/useTrayVisible";
 import { useSessionList } from "../hooks/useSessionList";
@@ -80,6 +81,7 @@ export function Settings() {
   const { nickname, setNickname } = useNickname();
   const { enabled: autoStartEnabled, setEnabled: setAutoStartEnabled } = useAutoStart();
   const { enabled: autoUpdateEnabled, setEnabled: setAutoUpdateEnabled } = useAutoUpdate();
+  const { enabled: autoInstallEnabled, setEnabled: setAutoInstallEnabled } = useAutoInstall();
   const { hidden: dockHidden, setHidden: setDockHidden } = useDockVisible();
   const { hidden: trayHidden, setHidden: setTrayHidden } = useTrayVisible();
   const { enabled: sessionListEnabled, setEnabled: setSessionListEnabled } = useSessionList();
@@ -406,6 +408,21 @@ export function Settings() {
                 <button
                   className={`toggle-switch ${autoUpdateEnabled ? "active" : ""}`}
                   onClick={() => setAutoUpdateEnabled(!autoUpdateEnabled)}
+                  data-testid="settings-auto-update-toggle"
+                >
+                  <span className="toggle-knob" />
+                </button>
+              </div>
+              <div className="settings-row with-hint">
+                <div>
+                  <span className="settings-row-label">Install Updates Automatically</span>
+                  <span className="settings-row-hint">When enabled, new versions install without asking. A Terminal window will run the Homebrew upgrade and the app will restart.</span>
+                </div>
+                <button
+                  className={`toggle-switch ${autoInstallEnabled ? "active" : ""}`}
+                  onClick={() => setAutoInstallEnabled(!autoInstallEnabled)}
+                  disabled={!autoUpdateEnabled}
+                  data-testid="settings-auto-install-toggle"
                 >
                   <span className="toggle-knob" />
                 </button>
