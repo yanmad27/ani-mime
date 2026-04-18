@@ -57,6 +57,20 @@ pub fn check_for_updates(app_handle: tauri::AppHandle) {
             }
         }
 
+        // Auto-install (default true): skip dialog and run brew upgrade directly
+        // Only explicit `false` in settings.json falls back to the confirmation dialog
+        let auto_install = std::fs::read_to_string(&store_path)
+            .ok()
+            .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
+            .and_then(|j| j.get("autoInstallEnabled").and_then(|v| v.as_bool()))
+            .unwrap_or(true);
+
+        if auto_install {
+            crate::app_log!("[updater] auto-install enabled — updating to v{} without prompt", latest);
+            update_now(&app_handle);
+            return;
+        }
+
         show_update_dialog(&app_handle, current, &latest);
     });
 }
