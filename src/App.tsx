@@ -3,6 +3,7 @@ import { StatusPill } from "./components/StatusPill";
 import { SpeechBubble } from "./components/SpeechBubble";
 import { VisitorDog } from "./components/VisitorDog";
 import { DevTag } from "./components/DevTag";
+import { DevBuildBadge } from "./components/DevBuildBadge";
 import { EffectOverlay } from "./effects";
 import { useStatus } from "./hooks/useStatus";
 import { useDrag } from "./hooks/useDrag";
@@ -89,6 +90,7 @@ function App() {
       <SpeechBubble visible={visible} message={message} onDismiss={dismiss} />
       {status !== "visiting" && <Mascot status={status} />}
       {status === "visiting" && <div style={{ width: 128 * scale, height: 128 * scale }} />}
+      <DevBuildBadge />
       <StatusPill status={status} glow={visible} />
       {devMode && <DevTag />}
       {visitors.map((v, i) => (
