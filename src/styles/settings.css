@@ -1215,9 +1215,12 @@
 
 .claude-empty-state {
   font-size: 12px;
-  opacity: 0.4;
-  padding: 12px 0;
+  padding: 16px 12px;
   text-align: center;
+  background: rgba(128, 128, 128, 0.1);
+  border: 1px solid rgba(128, 128, 128, 0.15);
+  border-radius: 8px;
+  color: rgba(128, 128, 128, 0.8);
 }
 
 .claude-error {
