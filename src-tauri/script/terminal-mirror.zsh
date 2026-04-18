@@ -21,7 +21,7 @@ _tm_is_claude() {
 # "task"    = normal command, stay busy until done
 _tm_classify() {
   local cmd="$1"
-  if [[ "$cmd" =~ (^|[[:space:]/])(start|dev|serve|watch|metro|docker-compose|docker\ compose|up|run\ dev|run\ start|run\ serve)([[:space:]]|$) ]]; then
+  if [[ "$cmd" =~ (^|[[:space:]/])(start|dev|serve|watch|metro|docker-compose|docker\ compose|up|run\ dev|run\ start|run\ serve|ssh)([[:space:]]|$) ]]; then
     echo "service"
   else
     echo "task"

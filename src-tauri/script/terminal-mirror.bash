@@ -18,7 +18,7 @@ _tm_is_claude() {
 # --- Command categorization ---
 _tm_classify() {
   local cmd="$1"
-  if [[ "$cmd" =~ (^|[[:space:]/])(start|dev|serve|watch|metro|docker-compose|docker\ compose|up) ]]; then
+  if [[ "$cmd" =~ (^|[[:space:]/])(start|dev|serve|watch|metro|docker-compose|docker\ compose|up|ssh) ]]; then
     echo "service"
   else
     echo "task"

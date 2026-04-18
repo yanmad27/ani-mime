@@ -16,7 +16,7 @@ end
 # --- Command categorization ---
 function _tm_classify
     set -l cmd "$argv[1]"
-    if string match -rq '(^|\s|/)(start|dev|serve|watch|metro|docker-compose|docker compose|up)(\s|$)' -- "$cmd"
+    if string match -rq '(^|\s|/)(start|dev|serve|watch|metro|docker-compose|docker compose|up|ssh)(\s|$)' -- "$cmd"
         echo "service"
     else
         echo "task"
