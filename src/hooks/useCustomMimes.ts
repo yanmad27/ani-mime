@@ -269,6 +269,12 @@ export function useCustomMimes() {
     const bytesToBase64 = (bytes: Uint8Array) =>
       btoa(Array.from(bytes).map((b) => String.fromCharCode(b)).join(""));
 
+    // Embed the busy-state strip as a top-level preview image. Marketplaces
+    // can render this as the thumbnail without having to decode the full
+    // payload. The busy strip is the most representative animation for a pet.
+    const busyBytes = await readFile(`${dir}/${mime.sprites.busy.fileName}`);
+    const previewPng = bytesToBase64(busyBytes);
+
     let payloadObj: Record<string, unknown>;
 
     if (mime.smartImportMeta) {
@@ -278,6 +284,7 @@ export function useCustomMimes() {
       payloadObj = {
         version: 2,
         name: mime.name,
+        previewPng,
         smartImportMeta: {
           sourceSheet: bytesToBase64(sheetBytes),
           frameInputs: mime.smartImportMeta.frameInputs,
@@ -290,7 +297,7 @@ export function useCustomMimes() {
         const bytes = await readFile(`${dir}/${fileName}`);
         sprites[status] = { frames, data: bytesToBase64(bytes) };
       }
-      payloadObj = { version: 1, name: mime.name, sprites };
+      payloadObj = { version: 1, name: mime.name, previewPng, sprites };
     }
 
     const payload = JSON.stringify(payloadObj, null, 2);
