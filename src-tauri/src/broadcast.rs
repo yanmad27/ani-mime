@@ -1,4 +1,5 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::Emitter;
@@ -101,9 +102,13 @@ pub fn start_broadcast(
     });
 
     // ---- Listen thread -----------------------------------------------------
+    // One-shot flag: flipped the first time we receive our own packet back.
+    // Proves that send → kernel → multicast group → recv is fully functional
+    // on THIS machine, independent of whether any peer is reachable.
+    let self_loop_confirmed = Arc::new(AtomicBool::new(false));
     let my_instance = instance_name.clone();
     std::thread::spawn(move || {
-        listen_loop(listen_socket, app_handle, app_state, my_instance);
+        listen_loop(listen_socket, app_handle, app_state, my_instance, self_loop_confirmed);
     });
 }
 
@@ -201,6 +206,7 @@ fn listen_loop(
     app_handle: tauri::AppHandle,
     app_state: Arc<Mutex<AppState>>,
     my_instance: String,
+    self_loop_confirmed: Arc<AtomicBool>,
 ) {
     let mut buf = [0u8; 1500];
     crate::app_log!(
@@ -213,7 +219,7 @@ fn listen_loop(
             Ok((n, from)) => {
                 let raw = &buf[..n];
                 match serde_json::from_slice::<serde_json::Value>(raw) {
-                    Ok(v) => handle_announce(&v, from, &app_handle, &app_state, &my_instance),
+                    Ok(v) => handle_announce(&v, from, &app_handle, &app_state, &my_instance, &self_loop_confirmed),
                     Err(e) => {
                         crate::app_warn!(
                             "[broadcast] received {} bytes from {} that isn't JSON: {}",
@@ -241,6 +247,7 @@ fn handle_announce(
     app_handle: &tauri::AppHandle,
     app_state: &Arc<Mutex<AppState>>,
     my_instance: &str,
+    self_loop_confirmed: &AtomicBool,
 ) {
     let magic = v["magic"].as_str().unwrap_or("");
     if magic != MAGIC {
@@ -257,7 +264,16 @@ fn handle_announce(
     };
 
     if instance_name == my_instance {
-        return; // our own multicast looping back
+        // Our own multicast looping back. Log once to confirm the local
+        // send→recv pipeline works — absence of this line means multicast
+        // is broken on this machine even before we talk to any peer.
+        if !self_loop_confirmed.swap(true, Ordering::Relaxed) {
+            crate::app_log!(
+                "[broadcast] self-loop confirmed: received own packet from {} — local multicast OK",
+                from
+            );
+        }
+        return;
     }
 
     let nickname = v["nickname"].as_str().unwrap_or("Unknown").to_string();
