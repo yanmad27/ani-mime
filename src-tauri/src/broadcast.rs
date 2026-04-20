@@ -32,6 +32,16 @@ const ANNOUNCE_INTERVAL_SECS: u64 = 5;
 const PEER_EXPIRY_SECS: u64 = 30;
 const MAGIC: &str = "ani-mime/1";
 
+/// How often to sweep the full local /24 via direct UDP unicast. Fallback
+/// for networks that filter both subnet broadcast and link-local multicast
+/// (managed WiFi / enterprise APs with "Bonjour Gateway" allowlists — we
+/// saw exactly this on the dev network where even 224.0.0.200 never crossed
+/// between clients despite unicast working fine).
+const UNICAST_SCAN_INTERVAL_SECS: u64 = 30;
+/// Spacing between individual sends within one scan — keeps the burst
+/// under ~100 pps so we don't look like a port scanner.
+const UNICAST_SEND_SPACING_MS: u64 = 10;
+
 /// Detect the machine's primary LAN IPv4 via the UDP-connect trick.
 /// No packet is actually sent — the kernel just picks the default source addr.
 fn detect_local_ipv4() -> Option<Ipv4Addr> {
@@ -57,8 +67,9 @@ pub fn start_broadcast(
     let instance_name = format!("{}-{}", nickname, std::process::id());
 
     crate::app_log!(
-        "[broadcast] starting (instance={}, nickname={}, pet={}, multicast={}:{}, http_port={}, announce_every={}s, expiry={}s)",
-        instance_name, nickname, pet, MULTICAST_ADDR, MULTICAST_PORT, http_port, ANNOUNCE_INTERVAL_SECS, PEER_EXPIRY_SECS
+        "[broadcast] starting (instance={}, nickname={}, pet={}, multicast={}:{}, http_port={}, announce_every={}s, unicast_scan_every={}s, expiry={}s)",
+        instance_name, nickname, pet, MULTICAST_ADDR, MULTICAST_PORT, http_port,
+        ANNOUNCE_INTERVAL_SECS, UNICAST_SCAN_INTERVAL_SECS, PEER_EXPIRY_SECS
     );
 
     let iface_ip = detect_local_ipv4();
@@ -98,6 +109,18 @@ pub fn start_broadcast(
     let ann_pet = pet.clone();
     std::thread::spawn(move || {
         announce_loop(ann_socket, ann_instance, ann_nickname, ann_pet, http_port);
+    });
+
+    // ---- Unicast subnet scan thread ----------------------------------------
+    // Fallback for networks that drop multicast — we directly UDP-poke every
+    // IP in the local /24 on a slow cadence. Receive side needs no change;
+    // the listen socket already accepts unicast on port 1235.
+    let scan_socket = listen_socket.clone();
+    let scan_instance = instance_name.clone();
+    let scan_nickname = nickname.clone();
+    let scan_pet = pet.clone();
+    std::thread::spawn(move || {
+        unicast_scan_loop(scan_socket, scan_instance, scan_nickname, scan_pet, http_port);
     });
 
     // ---- Expiry thread -----------------------------------------------------
@@ -204,6 +227,70 @@ fn announce_loop(
         }
 
         std::thread::sleep(Duration::from_secs(ANNOUNCE_INTERVAL_SECS));
+    }
+}
+
+/// Sweep the local /24 via direct UDP unicast. Every
+/// `UNICAST_SCAN_INTERVAL_SECS`, send our announce payload to every IP in
+/// the subnet (.1–.254, skipping self). The receive side on each peer
+/// handles unicast the same way as multicast — the `handle_announce` logic
+/// is unchanged.
+fn unicast_scan_loop(
+    socket: Arc<UdpSocket>,
+    instance_name: String,
+    nickname: String,
+    pet: String,
+    http_port: u16,
+) {
+    // Let the network come up before the first scan.
+    std::thread::sleep(Duration::from_secs(3));
+
+    let mut scan_num: u64 = 0;
+    loop {
+        scan_num += 1;
+        let local = match detect_local_ipv4() {
+            Some(ip) => ip,
+            None => {
+                crate::app_warn!("[broadcast] unicast scan #{}: no local IPv4 detected, skipping", scan_num);
+                std::thread::sleep(Duration::from_secs(UNICAST_SCAN_INTERVAL_SECS));
+                continue;
+            }
+        };
+
+        let octets = local.octets();
+        let local_last = octets[3];
+        let prefix = format!("{}.{}.{}.", octets[0], octets[1], octets[2]);
+        let payload = build_payload(&instance_name, &nickname, &pet, &local.to_string(), http_port);
+
+        let started = std::time::Instant::now();
+        let mut ok_count: u32 = 0;
+        let mut err_count: u32 = 0;
+
+        for last in 1u8..=254u8 {
+            if last == local_last {
+                continue;
+            }
+            let target: SocketAddr = match format!("{}{}:{}", prefix, last, MULTICAST_PORT).parse() {
+                Ok(a) => a,
+                Err(_) => continue,
+            };
+            match socket.send_to(&payload, target) {
+                Ok(_) => ok_count += 1,
+                Err(_) => err_count += 1, // EHOSTUNREACH / ENETUNREACH are common + noisy
+            }
+            std::thread::sleep(Duration::from_millis(UNICAST_SEND_SPACING_MS));
+        }
+
+        let elapsed = started.elapsed().as_millis();
+        crate::app_log!(
+            "[broadcast] unicast scan #{} done: prefix={}x/24, sent_ok={}, send_err={}, took={}ms",
+            scan_num, prefix, ok_count, err_count, elapsed
+        );
+
+        // Wait the remainder of the interval before the next scan.
+        let spent_secs = started.elapsed().as_secs();
+        let remaining = UNICAST_SCAN_INTERVAL_SECS.saturating_sub(spent_secs);
+        std::thread::sleep(Duration::from_secs(remaining));
     }
 }
 
