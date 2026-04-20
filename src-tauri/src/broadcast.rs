@@ -11,16 +11,22 @@ use crate::state::{AppState, PeerInfo};
 /// so a broken HTTP server doesn't block discovery (and vice versa).
 const MULTICAST_PORT: u16 = 1235;
 
-/// Site-local (organization-scoped) multicast group in the IANA-reserved range
-/// 239.0.0.0/8 for private apps. Not registered anywhere — just needs to be a
-/// stable value both peers agree on.
+/// Link-local multicast group in the IANA "Local Network Control Block"
+/// (`224.0.0.0/24`). Addresses in this range are **flooded** by switches —
+/// never subject to IGMP snooping — which is what we want for local peer
+/// discovery. This is the same class AirPlay/mDNS uses (`224.0.0.251`) and
+/// is why those services work on networks that drop other multicast.
 ///
-/// We use multicast instead of subnet broadcast (255.255.255.255) because many
-/// office / enterprise WiFi networks silently drop broadcast packets but still
-/// allow multicast (AirPlay / mDNS rely on it). Observed on the ani-mime dev
-/// network: _airplay._tcp multicast works fine, 255.255.255.255 broadcasts
-/// never reach peers.
-const MULTICAST_ADDR: Ipv4Addr = Ipv4Addr::new(239, 255, 42, 99);
+/// We tried `239.255.42.99` first (organization-scoped, `239.0.0.0/8`) and
+/// the dev network silently dropped it despite the kernel-side socket/join
+/// and `self-loop confirmed` both succeeding on each peer — classic IGMP
+/// snooping behaviour on managed WiFi APs. `224.0.0.200` is unassigned by
+/// IANA in the local block, so it's safe to claim for ani-mime.
+///
+/// Prior attempt before multicast: subnet broadcast (`255.255.255.255`) was
+/// dropped outright — many enterprise APs suppress broadcast to prevent
+/// broadcast storms.
+const MULTICAST_ADDR: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 200);
 
 const ANNOUNCE_INTERVAL_SECS: u64 = 5;
 const PEER_EXPIRY_SECS: u64 = 30;
